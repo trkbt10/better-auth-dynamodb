@@ -3,8 +3,13 @@
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import { applyClientFilter } from "../dynamodb/query-utils/apply-client-filter";
+import { createFetchItems } from "../dynamodb/query-utils/create-fetch-items";
 import { applySort } from "../dynamodb/query-utils/record-sort";
-import type { AdapterMethodContext } from "./types";
+import { resolveScanLimit } from "../dynamodb/query-utils/resolve-scan-limit";
+import type { AdapterClientContainer } from "./client-container";
+import { mapWhereFilters } from "./map-where-filters";
 
 type FindManyInput = {
 	model: string;
@@ -15,9 +20,33 @@ type FindManyInput = {
 	join?: JoinConfig | undefined;
 };
 
-export const createFindManyExecutor = (context: AdapterMethodContext) => {
-	const { fetchItems, applyClientFilter, resolveScanLimit, mapWhereFilters, getFieldName } =
-		context;
+export type FindManyOptions = {
+	adapterConfig: ResolvedDynamoDBAdapterConfig;
+	getFieldName: (args: { model: string; field: string }) => string;
+	getDefaultModelName: (model: string) => string;
+	getFieldAttributes: (args: { model: string; field: string }) => {
+		index?: boolean | undefined;
+	};
+};
+
+export const createFindManyExecutor = (
+	client: AdapterClientContainer,
+	options: FindManyOptions,
+) => {
+	const { documentClient } = client;
+	const {
+		adapterConfig,
+		getFieldName,
+		getDefaultModelName,
+		getFieldAttributes,
+	} = options;
+	const fetchItems = createFetchItems({
+		documentClient,
+		adapterConfig,
+		getFieldName,
+		getDefaultModelName,
+		getFieldAttributes,
+	});
 
 	return async ({
 		model,
@@ -52,6 +81,7 @@ export const createFindManyExecutor = (context: AdapterMethodContext) => {
 			items: result.items,
 			where: mappedWhere,
 			model,
+			getFieldName,
 			requiresClientFilter: result.requiresClientFilter,
 		});
 
@@ -65,8 +95,11 @@ export const createFindManyExecutor = (context: AdapterMethodContext) => {
 	};
 };
 
-export const createFindManyMethod = (context: AdapterMethodContext) => {
-	const executeFindMany = createFindManyExecutor(context);
+export const createFindManyMethod = (
+	client: AdapterClientContainer,
+	options: FindManyOptions,
+) => {
+	const executeFindMany = createFindManyExecutor(client, options);
 
 	return async <T>(input: FindManyInput) =>
 		(await executeFindMany(input)) as T[];

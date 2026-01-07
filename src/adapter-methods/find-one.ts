@@ -3,12 +3,18 @@
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
-import type { AdapterMethodContext } from "./types";
+import type { FindManyOptions } from "./find-many";
 import { createFindManyExecutor } from "./find-many";
+import type { AdapterClientContainer } from "./client-container";
 
-export const createFindOneMethod = (context: AdapterMethodContext) => {
-	const { getFieldName } = context;
-	const executeFindMany = createFindManyExecutor(context);
+type FindOneOptions = FindManyOptions;
+
+export const createFindOneMethod = (
+	client: AdapterClientContainer,
+	options: FindOneOptions,
+) => {
+	const { getFieldName } = options;
+	const executeFindMany = createFindManyExecutor(client, options);
 
 	return async <T>({
 		model,

@@ -2,11 +2,15 @@
  * @file Update method for the DynamoDB adapter.
  */
 import type { Where } from "@better-auth/core/db/adapter";
-import type { AdapterMethodContext } from "./types";
+import type { AdapterClientContainer } from "./client-container";
+import type { UpdateMethodOptions } from "./update-many";
 import { createUpdateExecutor } from "./update-many";
 
-export const createUpdateMethod = (context: AdapterMethodContext) => {
-	const executeUpdate = createUpdateExecutor(context);
+export const createUpdateMethod = (
+	client: AdapterClientContainer,
+	options: UpdateMethodOptions,
+) => {
+	const executeUpdate = createUpdateExecutor(client, options);
 
 	return async <T>({
 		model,

@@ -3,11 +3,32 @@
  */
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import { addTransactionOperation } from "../dynamodb/query-utils/transaction";
-import type { AdapterMethodContext } from "./types";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import type { AdapterClientContainer } from "./client-container";
+import { resolveTableName } from "../dynamodb/query-utils/resolve-table-name";
+import {
+	addTransactionOperation,
+	type DynamoDBTransactionState,
+} from "../dynamodb/query-utils/transaction";
 
-export const createCreateMethod = (context: AdapterMethodContext) => {
-	const { documentClient, resolveModelTableName, transactionState } = context;
+export type CreateMethodOptions = {
+	adapterConfig: ResolvedDynamoDBAdapterConfig;
+	getDefaultModelName: (model: string) => string;
+	transactionState?: DynamoDBTransactionState | undefined;
+};
+
+export const createCreateMethod = (
+	client: AdapterClientContainer,
+	options: CreateMethodOptions,
+) => {
+	const { documentClient } = client;
+	const { adapterConfig, getDefaultModelName, transactionState } = options;
+	const resolveModelTableName = (model: string) =>
+		resolveTableName({
+			model,
+			getDefaultModelName,
+			config: adapterConfig,
+		});
 
 	return async <T extends Record<string, unknown>>({
 		model,

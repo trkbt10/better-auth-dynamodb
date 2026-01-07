@@ -4,11 +4,19 @@
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import { applyClientFilter } from "../dynamodb/query-utils/apply-client-filter";
 import { buildUpdateExpression } from "../dynamodb/query-utils/build-update-expression";
 import { buildPrimaryKey } from "../dynamodb/query-utils/build-primary-key";
-import { addTransactionOperation } from "../dynamodb/query-utils/transaction";
+import { createFetchItems } from "../dynamodb/query-utils/create-fetch-items";
+import { resolveTableName } from "../dynamodb/query-utils/resolve-table-name";
+import {
+	addTransactionOperation,
+	type DynamoDBTransactionState,
+} from "../dynamodb/query-utils/transaction";
 import type { DynamoDBItem } from "../dynamodb/query-utils/where-evaluator";
-import type { AdapterMethodContext } from "./types";
+import type { AdapterClientContainer } from "./client-container";
+import { mapWhereFilters } from "./map-where-filters";
 
 type UpdateExecutionInput = {
 	model: string;
@@ -37,16 +45,50 @@ const applyUpdateData = <T extends Record<string, unknown>>(
 	return { ...item, ...updates };
 };
 
-export const createUpdateExecutor = (context: AdapterMethodContext) => {
+const buildReturnValues = (returnUpdatedItems: boolean) => {
+	if (returnUpdatedItems) {
+		return { ReturnValues: "ALL_NEW" as const };
+	}
+	return {};
+};
+
+export type UpdateMethodOptions = {
+	adapterConfig: ResolvedDynamoDBAdapterConfig;
+	getFieldName: (args: { model: string; field: string }) => string;
+	getDefaultModelName: (model: string) => string;
+	getFieldAttributes: (args: { model: string; field: string }) => {
+		index?: boolean | undefined;
+	};
+	transactionState?: DynamoDBTransactionState | undefined;
+};
+
+export const createUpdateExecutor = (
+	client: AdapterClientContainer,
+	options: UpdateMethodOptions,
+) => {
+	const { documentClient } = client;
 	const {
-		documentClient,
-		fetchItems,
-		applyClientFilter,
-		mapWhereFilters,
-		resolveModelTableName,
-		getPrimaryKeyName,
+		adapterConfig,
+		getFieldName,
+		getDefaultModelName,
+		getFieldAttributes,
 		transactionState,
-	} = context;
+	} = options;
+	const fetchItems = createFetchItems({
+		documentClient,
+		adapterConfig,
+		getFieldName,
+		getDefaultModelName,
+		getFieldAttributes,
+	});
+	const resolveModelTableName = (model: string) =>
+		resolveTableName({
+			model,
+			getDefaultModelName,
+			config: adapterConfig,
+		});
+	const getPrimaryKeyName = (model: string) =>
+		getFieldName({ model, field: "id" });
 
 	return async ({
 		model,
@@ -67,6 +109,7 @@ export const createUpdateExecutor = (context: AdapterMethodContext) => {
 			items: result.items,
 			where: mappedWhere,
 			model,
+			getFieldName,
 			requiresClientFilter: result.requiresClientFilter,
 		});
 
@@ -116,9 +159,7 @@ export const createUpdateExecutor = (context: AdapterMethodContext) => {
 						updateExpression.expressionAttributeNames,
 					ExpressionAttributeValues:
 						updateExpression.expressionAttributeValues,
-					...(returnUpdatedItems
-						? { ReturnValues: "ALL_NEW" as const }
-						: {}),
+					...buildReturnValues(returnUpdatedItems),
 				};
 				const updateResult = await documentClient.send(
 					new UpdateCommand(commandInput),
@@ -136,8 +177,11 @@ export const createUpdateExecutor = (context: AdapterMethodContext) => {
 	};
 };
 
-export const createUpdateManyMethod = (context: AdapterMethodContext) => {
-	const executeUpdate = createUpdateExecutor(context);
+export const createUpdateManyMethod = (
+	client: AdapterClientContainer,
+	options: UpdateMethodOptions,
+) => {
+	const executeUpdate = createUpdateExecutor(client, options);
 
 	return async ({
 		model,

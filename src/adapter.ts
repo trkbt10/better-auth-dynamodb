@@ -6,13 +6,11 @@ import type {
 	AdapterFactoryCustomizeAdapterCreator,
 	AdapterFactoryOptions,
 	DBAdapter,
-	Where,
 } from "@better-auth/core/db/adapter";
 import { createAdapterFactory } from "@better-auth/core/db/adapter";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { AdapterMethodContext } from "./adapter-methods/types";
 import { randomUUID } from "node:crypto";
-import type { DynamoDBAdapterConfig } from "./adapter-config";
+import type { DynamoDBAdapterConfig, ResolvedDynamoDBAdapterConfig } from "./adapter-config";
 import { resolveAdapterConfig } from "./adapter-config";
 import { createCountMethod } from "./adapter-methods/count";
 import { createCreateMethod } from "./adapter-methods/create";
@@ -23,23 +21,17 @@ import { createFindOneMethod } from "./adapter-methods/find-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-import { applyClientFilter } from "./dynamodb/query-utils/apply-client-filter";
-import { createFetchCount } from "./dynamodb/query-utils/create-fetch-count";
-import { createFetchItems } from "./dynamodb/query-utils/create-fetch-items";
-import { resolveScanLimit } from "./dynamodb/query-utils/resolve-scan-limit";
-import { resolveTableName } from "./dynamodb/query-utils/resolve-table-name";
 import {
 	createTransactionState,
 	executeTransaction,
 	type DynamoDBTransactionState,
 } from "./dynamodb/query-utils/transaction";
-import type { ResolvedDynamoDBAdapterConfig } from "./adapter-config";
-import type {
-	DynamoDBWhere,
-	DynamoDBWhereConnector,
-	DynamoDBWhereOperator,
-} from "./dynamodb/types";
-import type { DynamoDBItem } from "./dynamodb/query-utils/where-evaluator";
+import type { AdapterClientContainer } from "./adapter-methods/client-container";
+import type { CountMethodOptions } from "./adapter-methods/count";
+import type { CreateMethodOptions } from "./adapter-methods/create";
+import type { DeleteMethodOptions } from "./adapter-methods/delete-many";
+import type { FindManyOptions } from "./adapter-methods/find-many";
+import type { UpdateMethodOptions } from "./adapter-methods/update-many";
 
 const ensureDocumentClient = (
 	documentClient: DynamoDBDocumentClient | undefined,
@@ -53,36 +45,6 @@ const ensureDocumentClient = (
 	return documentClient;
 };
 
-const resolveWhereOperator = (
-	operator: Where["operator"],
-): DynamoDBWhereOperator => {
-	if (operator) {
-		return operator as DynamoDBWhereOperator;
-	}
-	return "eq";
-};
-
-const resolveWhereConnector = (
-	connector: Where["connector"],
-): DynamoDBWhereConnector => {
-	if (connector) {
-		return connector;
-	}
-	return "AND";
-};
-
-const mapWhereFilters = (where: Where[] | undefined): DynamoDBWhere[] | undefined => {
-	if (!where || where.length === 0) {
-		return undefined;
-	}
-	return where.map((entry) => ({
-		field: entry.field,
-		operator: resolveWhereOperator(entry.operator),
-		value: entry.value,
-		connector: resolveWhereConnector(entry.connector),
-	}));
-};
-
 const createDynamoDbCustomizer = (props: {
 	documentClient: DynamoDBDocumentClient;
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
@@ -91,66 +53,37 @@ const createDynamoDbCustomizer = (props: {
 	const { documentClient, adapterConfig, transactionState } = props;
 
 	return ({ getFieldName, getDefaultModelName, getFieldAttributes }) => {
-		const fetchItems = createFetchItems({
-			documentClient,
+		const adapterClient: AdapterClientContainer = { documentClient };
+		const sharedOptions: FindManyOptions = {
 			adapterConfig,
 			getFieldName,
 			getDefaultModelName,
 			getFieldAttributes,
-		});
-		const fetchCount = createFetchCount({
-			documentClient,
-			adapterConfig,
-			getFieldName,
-			getDefaultModelName,
-			getFieldAttributes,
-		});
-		const applyClientFilterForFetch = (input: {
-			items: DynamoDBItem[];
-			where: DynamoDBWhere[] | undefined;
-			model: string;
-			requiresClientFilter: boolean;
-		}) =>
-			applyClientFilter({
-				items: input.items,
-				where: input.where,
-				model: input.model,
-				getFieldName,
-				requiresClientFilter: input.requiresClientFilter,
-			});
-
-		const getPrimaryKeyName = (model: string) =>
-			getFieldName({ model, field: "id" });
-
-		const resolveModelTableName = (model: string) =>
-			resolveTableName({
-				model,
-				getDefaultModelName,
-				config: adapterConfig,
-			});
-
-		const methodContext: AdapterMethodContext = {
-			documentClient,
-			fetchItems,
-			fetchCount,
-			applyClientFilter: applyClientFilterForFetch,
-			resolveScanLimit,
+		};
+		const countOptions: CountMethodOptions = sharedOptions;
+		const updateOptions: UpdateMethodOptions = {
+			...sharedOptions,
 			transactionState,
-			getFieldName,
-			resolveModelTableName,
-			getPrimaryKeyName,
-			mapWhereFilters,
+		};
+		const deleteOptions: DeleteMethodOptions = {
+			...sharedOptions,
+			transactionState,
+		};
+		const createOptions: CreateMethodOptions = {
+			adapterConfig,
+			getDefaultModelName,
+			transactionState,
 		};
 
 		return {
-			create: createCreateMethod(methodContext),
-			findOne: createFindOneMethod(methodContext),
-			findMany: createFindManyMethod(methodContext),
-			count: createCountMethod(methodContext),
-			update: createUpdateMethod(methodContext),
-			updateMany: createUpdateManyMethod(methodContext),
-			delete: createDeleteMethod(methodContext),
-			deleteMany: createDeleteManyMethod(methodContext),
+			create: createCreateMethod(adapterClient, createOptions),
+			findOne: createFindOneMethod(adapterClient, sharedOptions),
+			findMany: createFindManyMethod(adapterClient, sharedOptions),
+			count: createCountMethod(adapterClient, countOptions),
+			update: createUpdateMethod(adapterClient, updateOptions),
+			updateMany: createUpdateManyMethod(adapterClient, updateOptions),
+			delete: createDeleteMethod(adapterClient, deleteOptions),
+			deleteMany: createDeleteManyMethod(adapterClient, deleteOptions),
 		};
 	};
 };
@@ -158,21 +91,15 @@ const createDynamoDbCustomizer = (props: {
 export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
 	const resolvedConfig = resolveAdapterConfig(config);
 	const documentClient = ensureDocumentClient(resolvedConfig.documentClient);
-	const lazyState: {
-		options: BetterAuthOptions | null;
-		adapter: ((options: BetterAuthOptions) => DBAdapter<BetterAuthOptions>) | null;
-	} = {
-		options: null,
-		adapter: null,
-	};
-	const getLazyAdapter = (): (options: BetterAuthOptions) => DBAdapter<BetterAuthOptions> => {
-		if (!lazyState.adapter) {
+	const currentOptions: { value: BetterAuthOptions | null } = { value: null };
+	const resolveOptions = (): BetterAuthOptions => {
+		if (!currentOptions.value) {
 			throw new DynamoDBAdapterError(
 				"MISSING_CLIENT",
-				"DynamoDB adapter is not initialized.",
+				"DynamoDB adapter options are not initialized.",
 			);
 		}
-		return lazyState.adapter;
+		return currentOptions.value;
 	};
 
 	const adapterOptions: AdapterFactoryOptions = {
@@ -199,12 +126,7 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
 
 	if (resolvedConfig.transaction) {
 		adapterOptions.config.transaction = async (cb) => {
-			if (!lazyState.options || !lazyState.adapter) {
-				throw new DynamoDBAdapterError(
-					"MISSING_CLIENT",
-					"DynamoDB adapter options are not initialized.",
-				);
-			}
+			const options = resolveOptions();
 			const state = createTransactionState();
 			const transactionAdapter = createAdapterFactory({
 				config: { ...adapterOptions.config, transaction: false },
@@ -213,7 +135,7 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
 					adapterConfig: resolvedConfig,
 					transactionState: state,
 				}),
-			})(lazyState.options);
+			})(options);
 
 			const result = await cb(transactionAdapter);
 			await executeTransaction({ documentClient, state });
@@ -221,10 +143,10 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
 		};
 	}
 
-	lazyState.adapter = createAdapterFactory(adapterOptions);
+	const adapterFactory = createAdapterFactory(adapterOptions);
 
 	return (options: BetterAuthOptions): DBAdapter<BetterAuthOptions> => {
-		lazyState.options = options;
-		return getLazyAdapter()(options);
+		currentOptions.value = options;
+		return adapterFactory(options);
 	};
 };
