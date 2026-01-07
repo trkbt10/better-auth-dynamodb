@@ -1,4 +1,9 @@
 /**
- * @file Main entry point for the TypeScript library.
+ * @file Package entry point for DynamoDB adapter exports.
  */
-console.log("HELLO!");
+export { dynamodbAdapter } from "./adapter";
+export { DynamoDBAdapterError } from "./dynamodb/errors/errors";
+export type {
+	DynamoDBAdapterConfig,
+	DynamoDBTableNameResolver,
+} from "./adapter-config";

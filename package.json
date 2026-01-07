@@ -35,5 +35,9 @@
     "vite": "^7.1.5",
     "vitest": "^3.2.4"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.964.0",
+    "@aws-sdk/lib-dynamodb": "^3.964.0",
+    "better-auth": "^1.4.10"
+  }
 }
