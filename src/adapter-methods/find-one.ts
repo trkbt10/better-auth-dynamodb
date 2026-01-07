@@ -6,7 +6,7 @@ import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { AdapterMethodContext } from "./types";
 
 export const createFindOneMethod = (context: AdapterMethodContext) => {
-	const { fetcher, mapWhereFilters, getFieldName } = context;
+	const { fetchItems, applyClientFilter, mapWhereFilters, getFieldName } = context;
 
 	return async <T>({
 		model,
@@ -26,12 +26,12 @@ export const createFindOneMethod = (context: AdapterMethodContext) => {
 			);
 		}
 
-		const fetchResult = await fetcher.fetchItems({
+		const fetchResult = await fetchItems({
 			model,
 			where: mapWhereFilters(where),
 			limit: 1,
 		});
-		const filteredItems = fetcher.applyClientFilter({
+		const filteredItems = applyClientFilter({
 			items: fetchResult.items,
 			where: mapWhereFilters(where),
 			model,

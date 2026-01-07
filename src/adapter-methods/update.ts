@@ -27,7 +27,8 @@ const applyUpdateData = <T extends Record<string, unknown>>(
 export const createUpdateMethod = (context: AdapterMethodContext) => {
 	const {
 		documentClient,
-		fetcher,
+		fetchItems,
+		applyClientFilter,
 		mapWhereFilters,
 		resolveModelTableName,
 		getPrimaryKeyName,
@@ -44,13 +45,13 @@ export const createUpdateMethod = (context: AdapterMethodContext) => {
 		update: T;
 	}) => {
 		const tableName = resolveModelTableName(model);
-		const result = await fetcher.fetchItems({
+		const result = await fetchItems({
 			model,
 			where: mapWhereFilters(where),
 			limit: 1,
 		});
 
-		const filteredItems = fetcher.applyClientFilter({
+		const filteredItems = applyClientFilter({
 			items: result.items,
 			where: mapWhereFilters(where),
 			model,

@@ -23,7 +23,10 @@ import { createFindOneMethod } from "./adapter-methods/find-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-import { createAdapterFetcher } from "./dynamodb/fetcher/fetcher";
+import { applyClientFilter } from "./dynamodb/fetcher/client-filter";
+import { createFetchCount } from "./dynamodb/fetcher/fetch-count";
+import { createFetchItems } from "./dynamodb/fetcher/fetch-items";
+import { resolveScanLimit } from "./dynamodb/fetcher/scan-limit";
 import { resolveTableName } from "./dynamodb/keys/table-name";
 import {
 	createTransactionState,
@@ -36,6 +39,7 @@ import type {
 	DynamoDBWhereConnector,
 	DynamoDBWhereOperator,
 } from "./dynamodb/types";
+import type { DynamoDBItem } from "./dynamodb/where/where-evaluator";
 
 const ensureDocumentClient = (
 	documentClient: DynamoDBDocumentClient | undefined,
@@ -87,12 +91,31 @@ const createDynamoDbCustomizer = (props: {
 	const { documentClient, adapterConfig, transactionState } = props;
 
 	return ({ getFieldName, getDefaultModelName }) => {
-		const fetcher = createAdapterFetcher({
+		const fetchItems = createFetchItems({
 			documentClient,
 			adapterConfig,
 			getFieldName,
 			getDefaultModelName,
 		});
+		const fetchCount = createFetchCount({
+			documentClient,
+			adapterConfig,
+			getFieldName,
+			getDefaultModelName,
+		});
+		const applyClientFilterForFetch = (input: {
+			items: DynamoDBItem[];
+			where: DynamoDBWhere[] | undefined;
+			model: string;
+			requiresClientFilter: boolean;
+		}) =>
+			applyClientFilter({
+				items: input.items,
+				where: input.where,
+				model: input.model,
+				getFieldName,
+				requiresClientFilter: input.requiresClientFilter,
+			});
 
 		const getPrimaryKeyName = (model: string) =>
 			getFieldName({ model, field: "id" });
@@ -106,7 +129,10 @@ const createDynamoDbCustomizer = (props: {
 
 		const methodContext: AdapterMethodContext = {
 			documentClient,
-			fetcher,
+			fetchItems,
+			fetchCount,
+			applyClientFilter: applyClientFilterForFetch,
+			resolveScanLimit,
 			transactionState,
 			getFieldName,
 			resolveModelTableName,

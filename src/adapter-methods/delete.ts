@@ -11,7 +11,8 @@ import type { AdapterMethodContext } from "./types";
 export const createDeleteMethod = (context: AdapterMethodContext) => {
 	const {
 		documentClient,
-		fetcher,
+		fetchItems,
+		applyClientFilter,
 		mapWhereFilters,
 		resolveModelTableName,
 		getPrimaryKeyName,
@@ -26,13 +27,13 @@ export const createDeleteMethod = (context: AdapterMethodContext) => {
 		where: Where[];
 	}) => {
 		const tableName = resolveModelTableName(model);
-		const result = await fetcher.fetchItems({
+		const result = await fetchItems({
 			model,
 			where: mapWhereFilters(where),
 			limit: 1,
 		});
 
-		const filteredItems = fetcher.applyClientFilter({
+		const filteredItems = applyClientFilter({
 			items: result.items,
 			where: mapWhereFilters(where),
 			model,

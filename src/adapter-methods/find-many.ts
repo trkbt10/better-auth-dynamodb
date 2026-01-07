@@ -7,7 +7,8 @@ import { applySort } from "../dynamodb/sorting/record-sort";
 import type { AdapterMethodContext } from "./types";
 
 export const createFindManyMethod = (context: AdapterMethodContext) => {
-	const { fetcher, mapWhereFilters, getFieldName } = context;
+	const { fetchItems, applyClientFilter, resolveScanLimit, mapWhereFilters, getFieldName } =
+		context;
 
 	return async <T>({
 		model,
@@ -32,19 +33,19 @@ export const createFindManyMethod = (context: AdapterMethodContext) => {
 		}
 
 		const offsetValue = offset ?? 0;
-		const scanLimit = fetcher.resolveScanLimit({
+		const scanLimit = resolveScanLimit({
 			limit,
 			offset: offsetValue,
 			sortByDefined: Boolean(sortBy),
 			requiresClientFilter: false,
 		});
-		const result = await fetcher.fetchItems({
+		const result = await fetchItems({
 			model,
 			where: mapWhereFilters(where) ?? [],
 			limit: scanLimit,
 		});
 
-		const filteredItems = fetcher.applyClientFilter({
+		const filteredItems = applyClientFilter({
 			items: result.items,
 			where: mapWhereFilters(where),
 			model,
