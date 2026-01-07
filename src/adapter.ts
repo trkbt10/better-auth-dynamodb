@@ -6,34 +6,31 @@ import type {
 	AdapterFactoryCustomizeAdapterCreator,
 	AdapterFactoryOptions,
 	DBAdapter,
-	JoinConfig,
 	Where,
 } from "@better-auth/core/db/adapter";
 import { createAdapterFactory } from "@better-auth/core/db/adapter";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import {
-	DeleteCommand,
-	PutCommand,
-	UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
+import type { AdapterMethodContext } from "./adapter-methods/types";
 import { randomUUID } from "node:crypto";
 import type { DynamoDBAdapterConfig } from "./adapter-config";
 import { resolveAdapterConfig } from "./adapter-config";
+import { createCountMethod } from "./adapter-methods/count";
+import { createCreateMethod } from "./adapter-methods/create";
+import { createDeleteManyMethod } from "./adapter-methods/delete-many";
+import { createDeleteMethod } from "./adapter-methods/delete";
+import { createFindManyMethod } from "./adapter-methods/find-many";
+import { createFindOneMethod } from "./adapter-methods/find-one";
+import { createUpdateManyMethod } from "./adapter-methods/update-many";
+import { createUpdateMethod } from "./adapter-methods/update";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-import { buildUpdateExpression } from "./dynamodb/expressions/update-expression";
 import { createAdapterFetcher } from "./dynamodb/fetcher/fetcher";
-import { buildPrimaryKey } from "./dynamodb/keys/primary-key";
 import { resolveTableName } from "./dynamodb/keys/table-name";
 import {
-	addTransactionOperation,
 	createTransactionState,
 	executeTransaction,
 	type DynamoDBTransactionState,
 } from "./dynamodb/operations/transaction";
-import { applySort } from "./dynamodb/sorting/record-sort";
 import type { ResolvedDynamoDBAdapterConfig } from "./adapter-config";
-import type { DynamoDBItem } from "./dynamodb/where/where-evaluator";
 import type {
 	DynamoDBWhere,
 	DynamoDBWhereConnector,
@@ -50,20 +47,6 @@ const ensureDocumentClient = (
 		);
 	}
 	return documentClient;
-};
-
-const applyUpdateData = <T extends Record<string, unknown>>(
-	item: T,
-	update: Record<string, unknown>,
-): T => {
-	const entries = Object.entries(update).filter(
-		([, value]) => value !== undefined,
-	);
-	const updates = entries.reduce<Record<string, unknown>>((acc, [key, value]) => {
-		acc[key] = value;
-		return acc;
-	}, {});
-	return { ...item, ...updates };
 };
 
 const resolveWhereOperator = (
@@ -121,388 +104,25 @@ const createDynamoDbCustomizer = (props: {
 				config: adapterConfig,
 			});
 
+		const methodContext: AdapterMethodContext = {
+			documentClient,
+			fetcher,
+			transactionState,
+			getFieldName,
+			resolveModelTableName,
+			getPrimaryKeyName,
+			mapWhereFilters,
+		};
+
 		return {
-			async create<T extends Record<string, unknown>>({
-				model,
-				data,
-			}: {
-				model: string;
-				data: T;
-			}) {
-				const tableName = resolveModelTableName(model);
-				if (transactionState) {
-					addTransactionOperation(transactionState, {
-						kind: "put",
-						tableName,
-						item: data as Record<string, NativeAttributeValue>,
-					});
-					return data;
-				}
-				await documentClient.send(
-					new PutCommand({
-						TableName: tableName,
-						Item: data,
-					}),
-				);
-				return data;
-			},
-			async findOne<T>({
-				model,
-				where,
-				select,
-				join,
-			}: {
-				model: string;
-				where: Where[];
-				select?: string[] | undefined;
-				join?: JoinConfig | undefined;
-			}) {
-				if (join) {
-					throw new DynamoDBAdapterError(
-						"UNSUPPORTED_JOIN",
-						"DynamoDB adapter does not support joins.",
-					);
-				}
-
-				const fetchResult = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where),
-					limit: 1,
-				});
-				const filteredItems = fetcher.applyClientFilter({
-					items: fetchResult.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: fetchResult.requiresClientFilter,
-				});
-
-				if (filteredItems.length === 0) {
-					return null;
-				}
-
-				const item = filteredItems[0] as T;
-				if (!select || select.length === 0) {
-					return item;
-				}
-
-				const selection: Record<string, unknown> = {};
-				select.forEach((field) => {
-					const resolvedField = getFieldName({ model, field });
-					if (resolvedField in (item as Record<string, unknown>)) {
-						selection[resolvedField] = (item as Record<string, unknown>)[
-							resolvedField
-						];
-					}
-				});
-
-				return selection as T;
-			},
-			async findMany<T>({
-				model,
-				where,
-				limit,
-				sortBy,
-				offset,
-				join,
-			}: {
-				model: string;
-				where?: Where[] | undefined;
-				limit: number;
-				sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
-				offset?: number | undefined;
-				join?: JoinConfig | undefined;
-			}) {
-				if (join) {
-					throw new DynamoDBAdapterError(
-						"UNSUPPORTED_JOIN",
-						"DynamoDB adapter does not support joins.",
-					);
-				}
-
-				const offsetValue = offset ?? 0;
-				const scanLimit = fetcher.resolveScanLimit({
-					limit,
-					offset: offsetValue,
-					sortByDefined: Boolean(sortBy),
-					requiresClientFilter: false,
-				});
-				const result = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where) ?? [],
-					limit: scanLimit,
-				});
-
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: result.requiresClientFilter,
-				});
-
-				const sortedItems = applySort(filteredItems, {
-					model,
-					sortBy,
-					getFieldName,
-				});
-
-				return sortedItems.slice(offsetValue, offsetValue + limit) as T[];
-			},
-			async count({
-				model,
-				where,
-			}: {
-				model: string;
-				where?: Where[] | undefined;
-			}) {
-				const result = await fetcher.fetchCount({
-					model,
-					where: mapWhereFilters(where) ?? [],
-				});
-				if (!result.requiresClientFilter) {
-					return result.count;
-				}
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: true,
-				});
-				return filteredItems.length;
-			},
-			async update<T>({
-				model,
-				where,
-				update,
-			}: {
-				model: string;
-				where: Where[];
-				update: T;
-			}) {
-				const tableName = resolveModelTableName(model);
-				const result = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where),
-					limit: 1,
-				});
-
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: result.requiresClientFilter,
-				});
-
-				if (filteredItems.length === 0) {
-					return null;
-				}
-
-				const primaryKeyName = getPrimaryKeyName(model);
-				const key = buildPrimaryKey({
-					item: filteredItems[0] as DynamoDBItem,
-					keyField: primaryKeyName,
-				});
-				const updateExpression = buildUpdateExpression(
-					update as Record<string, NativeAttributeValue>,
-				);
-
-				if (transactionState) {
-					addTransactionOperation(transactionState, {
-						kind: "update",
-						tableName,
-						key,
-						updateExpression: updateExpression.updateExpression,
-						expressionAttributeNames:
-							updateExpression.expressionAttributeNames,
-						expressionAttributeValues:
-							updateExpression.expressionAttributeValues,
-					});
-					return applyUpdateData(
-						filteredItems[0] as Record<string, unknown>,
-						update as Record<string, unknown>,
-					) as T;
-				}
-
-				const updateResult = await documentClient.send(
-					new UpdateCommand({
-						TableName: tableName,
-						Key: key,
-						UpdateExpression: updateExpression.updateExpression,
-						ExpressionAttributeNames:
-							updateExpression.expressionAttributeNames,
-						ExpressionAttributeValues:
-							updateExpression.expressionAttributeValues,
-						ReturnValues: "ALL_NEW",
-					}),
-				);
-
-				if (!updateResult.Attributes) {
-					return null;
-				}
-
-				return updateResult.Attributes as T;
-			},
-			async updateMany({
-				model,
-				where,
-				update,
-			}: {
-				model: string;
-				where: Where[];
-				update: Record<string, unknown>;
-			}) {
-				const tableName = resolveModelTableName(model);
-				const result = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where),
-				});
-
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: result.requiresClientFilter,
-				});
-
-				if (filteredItems.length === 0) {
-					return 0;
-				}
-
-				const primaryKeyName = getPrimaryKeyName(model);
-				const updateExpression = buildUpdateExpression(
-					update as Record<string, NativeAttributeValue>,
-				);
-				const state = { updated: 0 };
-
-				for (const item of filteredItems) {
-					const key = buildPrimaryKey({
-						item: item as DynamoDBItem,
-						keyField: primaryKeyName,
-					});
-					if (transactionState) {
-						addTransactionOperation(transactionState, {
-							kind: "update",
-							tableName,
-							key,
-							updateExpression: updateExpression.updateExpression,
-							expressionAttributeNames:
-								updateExpression.expressionAttributeNames,
-							expressionAttributeValues:
-								updateExpression.expressionAttributeValues,
-						});
-					} else {
-						await documentClient.send(
-							new UpdateCommand({
-								TableName: tableName,
-								Key: key,
-								UpdateExpression: updateExpression.updateExpression,
-								ExpressionAttributeNames:
-									updateExpression.expressionAttributeNames,
-								ExpressionAttributeValues:
-									updateExpression.expressionAttributeValues,
-							}),
-						);
-					}
-					state.updated += 1;
-				}
-
-				return state.updated;
-			},
-			async delete({
-				model,
-				where,
-			}: {
-				model: string;
-				where: Where[];
-			}) {
-				const tableName = resolveModelTableName(model);
-				const result = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where),
-					limit: 1,
-				});
-
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: result.requiresClientFilter,
-				});
-
-				if (filteredItems.length === 0) {
-					return;
-				}
-
-				const primaryKeyName = getPrimaryKeyName(model);
-				const key = buildPrimaryKey({
-					item: filteredItems[0] as DynamoDBItem,
-					keyField: primaryKeyName,
-				});
-				if (transactionState) {
-					addTransactionOperation(transactionState, {
-						kind: "delete",
-						tableName,
-						key,
-					});
-					return;
-				}
-				await documentClient.send(
-					new DeleteCommand({
-						TableName: tableName,
-						Key: key,
-					}),
-				);
-			},
-			async deleteMany({
-				model,
-				where,
-			}: {
-				model: string;
-				where: Where[];
-			}) {
-				const tableName = resolveModelTableName(model);
-				const result = await fetcher.fetchItems({
-					model,
-					where: mapWhereFilters(where),
-				});
-
-				const filteredItems = fetcher.applyClientFilter({
-					items: result.items,
-					where: mapWhereFilters(where),
-					model,
-					requiresClientFilter: result.requiresClientFilter,
-				});
-
-				if (filteredItems.length === 0) {
-					return 0;
-				}
-
-				const primaryKeyName = getPrimaryKeyName(model);
-				const state = { deleted: 0 };
-
-				for (const item of filteredItems) {
-					const key = buildPrimaryKey({
-						item: item as DynamoDBItem,
-						keyField: primaryKeyName,
-					});
-					if (transactionState) {
-						addTransactionOperation(transactionState, {
-							kind: "delete",
-							tableName,
-							key,
-						});
-					} else {
-						await documentClient.send(
-							new DeleteCommand({
-								TableName: tableName,
-								Key: key,
-							}),
-						);
-					}
-					state.deleted += 1;
-				}
-
-				return state.deleted;
-			},
+			create: createCreateMethod(methodContext),
+			findOne: createFindOneMethod(methodContext),
+			findMany: createFindManyMethod(methodContext),
+			count: createCountMethod(methodContext),
+			update: createUpdateMethod(methodContext),
+			updateMany: createUpdateManyMethod(methodContext),
+			delete: createDeleteMethod(methodContext),
+			deleteMany: createDeleteManyMethod(methodContext),
 		};
 	};
 };
