@@ -12,6 +12,9 @@ export type DynamoDBAdapterConfig = {
 	usePlural?: boolean | undefined;
 	tableNamePrefix?: string | undefined;
 	tableNameResolver?: DynamoDBTableNameResolver | undefined;
+	indexNameResolver?:
+		| ((props: { model: string; field: string }) => string | undefined)
+		| undefined;
 	transaction?: boolean | undefined;
 };
 
@@ -21,6 +24,9 @@ export type ResolvedDynamoDBAdapterConfig = {
 	usePlural: boolean;
 	tableNamePrefix?: string | undefined;
 	tableNameResolver?: DynamoDBTableNameResolver | undefined;
+	indexNameResolver?:
+		| ((props: { model: string; field: string }) => string | undefined)
+		| undefined;
 	transaction: boolean;
 };
 
@@ -33,6 +39,7 @@ export const resolveAdapterConfig = (
 		usePlural: config.usePlural ?? false,
 		tableNamePrefix: config.tableNamePrefix,
 		tableNameResolver: config.tableNameResolver,
+		indexNameResolver: config.indexNameResolver,
 		transaction: config.transaction ?? false,
 	};
 };

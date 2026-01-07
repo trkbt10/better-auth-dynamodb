@@ -3,9 +3,9 @@
  */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
-import type { DynamoDBTransactionState } from "../dynamodb/operations/transaction";
+import type { DynamoDBTransactionState } from "../dynamodb/query-utils/transaction";
 import type { DynamoDBWhere } from "../dynamodb/types";
-import type { DynamoDBItem } from "../dynamodb/where/where-evaluator";
+import type { DynamoDBItem } from "../dynamodb/query-utils/where-evaluator";
 
 export type AdapterMethodContext = {
 	documentClient: DynamoDBDocumentClient;

@@ -3,7 +3,7 @@
  */
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocumentClientStub } from "../../../spec/dynamodb-document-client";
-import { scanCount, scanItems } from "./scan";
+import { scanCount, scanItems } from "./scan-command";
 
 describe("scanItems", () => {
 	test("paginates until exhaustion", async () => {

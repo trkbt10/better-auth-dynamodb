@@ -3,28 +3,30 @@
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
-import { applySort } from "../dynamodb/sorting/record-sort";
+import { applySort } from "../dynamodb/query-utils/record-sort";
 import type { AdapterMethodContext } from "./types";
 
-export const createFindManyMethod = (context: AdapterMethodContext) => {
+type FindManyInput = {
+	model: string;
+	where?: Where[] | undefined;
+	limit: number;
+	sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
+	offset?: number | undefined;
+	join?: JoinConfig | undefined;
+};
+
+export const createFindManyExecutor = (context: AdapterMethodContext) => {
 	const { fetchItems, applyClientFilter, resolveScanLimit, mapWhereFilters, getFieldName } =
 		context;
 
-	return async <T>({
+	return async ({
 		model,
 		where,
 		limit,
 		sortBy,
 		offset,
 		join,
-	}: {
-		model: string;
-		where?: Where[] | undefined;
-		limit: number;
-		sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
-		offset?: number | undefined;
-		join?: JoinConfig | undefined;
-	}) => {
+	}: FindManyInput) => {
 		if (join) {
 			throw new DynamoDBAdapterError(
 				"UNSUPPORTED_JOIN",
@@ -33,6 +35,7 @@ export const createFindManyMethod = (context: AdapterMethodContext) => {
 		}
 
 		const offsetValue = offset ?? 0;
+		const mappedWhere = mapWhereFilters(where);
 		const scanLimit = resolveScanLimit({
 			limit,
 			offset: offsetValue,
@@ -41,13 +44,13 @@ export const createFindManyMethod = (context: AdapterMethodContext) => {
 		});
 		const result = await fetchItems({
 			model,
-			where: mapWhereFilters(where) ?? [],
+			where: mappedWhere ?? [],
 			limit: scanLimit,
 		});
 
 		const filteredItems = applyClientFilter({
 			items: result.items,
-			where: mapWhereFilters(where),
+			where: mappedWhere,
 			model,
 			requiresClientFilter: result.requiresClientFilter,
 		});
@@ -58,6 +61,13 @@ export const createFindManyMethod = (context: AdapterMethodContext) => {
 			getFieldName,
 		});
 
-		return sortedItems.slice(offsetValue, offsetValue + limit) as T[];
+		return sortedItems.slice(offsetValue, offsetValue + limit);
 	};
+};
+
+export const createFindManyMethod = (context: AdapterMethodContext) => {
+	const executeFindMany = createFindManyExecutor(context);
+
+	return async <T>(input: FindManyInput) =>
+		(await executeFindMany(input)) as T[];
 };

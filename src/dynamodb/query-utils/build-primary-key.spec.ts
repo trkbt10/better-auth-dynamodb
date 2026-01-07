@@ -2,7 +2,7 @@
  * @file Tests for DynamoDB primary key helper.
  */
 import { DynamoDBAdapterError } from "../errors/errors";
-import { buildPrimaryKey } from "./primary-key";
+import { buildPrimaryKey } from "./build-primary-key";
 
 describe("buildPrimaryKey", () => {
 	const captureError = (fn: () => void): unknown => {

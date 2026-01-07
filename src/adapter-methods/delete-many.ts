@@ -3,12 +3,18 @@
  */
 import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
-import { buildPrimaryKey } from "../dynamodb/keys/primary-key";
-import { addTransactionOperation } from "../dynamodb/operations/transaction";
-import type { DynamoDBItem } from "../dynamodb/where/where-evaluator";
+import { buildPrimaryKey } from "../dynamodb/query-utils/build-primary-key";
+import { addTransactionOperation } from "../dynamodb/query-utils/transaction";
+import type { DynamoDBItem } from "../dynamodb/query-utils/where-evaluator";
 import type { AdapterMethodContext } from "./types";
 
-export const createDeleteManyMethod = (context: AdapterMethodContext) => {
+type DeleteExecutionInput = {
+	model: string;
+	where: Where[];
+	limit?: number | undefined;
+};
+
+export const createDeleteExecutor = (context: AdapterMethodContext) => {
 	const {
 		documentClient,
 		fetchItems,
@@ -19,22 +25,18 @@ export const createDeleteManyMethod = (context: AdapterMethodContext) => {
 		transactionState,
 	} = context;
 
-	return async ({
-		model,
-		where,
-	}: {
-		model: string;
-		where: Where[];
-	}) => {
+	return async ({ model, where, limit }: DeleteExecutionInput): Promise<number> => {
 		const tableName = resolveModelTableName(model);
+		const mappedWhere = mapWhereFilters(where);
 		const result = await fetchItems({
 			model,
-			where: mapWhereFilters(where),
+			where: mappedWhere,
+			limit,
 		});
 
 		const filteredItems = applyClientFilter({
 			items: result.items,
-			where: mapWhereFilters(where),
+			where: mappedWhere,
 			model,
 			requiresClientFilter: result.requiresClientFilter,
 		});
@@ -70,4 +72,11 @@ export const createDeleteManyMethod = (context: AdapterMethodContext) => {
 
 		return state.deleted;
 	};
+};
+
+export const createDeleteManyMethod = (context: AdapterMethodContext) => {
+	const executeDelete = createDeleteExecutor(context);
+
+	return async ({ model, where }: { model: string; where: Where[] }) =>
+		executeDelete({ model, where });
 };

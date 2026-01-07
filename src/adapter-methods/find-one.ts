@@ -4,9 +4,11 @@
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { AdapterMethodContext } from "./types";
+import { createFindManyExecutor } from "./find-many";
 
 export const createFindOneMethod = (context: AdapterMethodContext) => {
-	const { fetchItems, applyClientFilter, mapWhereFilters, getFieldName } = context;
+	const { getFieldName } = context;
+	const executeFindMany = createFindManyExecutor(context);
 
 	return async <T>({
 		model,
@@ -26,16 +28,11 @@ export const createFindOneMethod = (context: AdapterMethodContext) => {
 			);
 		}
 
-		const fetchResult = await fetchItems({
+		const filteredItems = await executeFindMany({
 			model,
-			where: mapWhereFilters(where),
+			where,
 			limit: 1,
-		});
-		const filteredItems = applyClientFilter({
-			items: fetchResult.items,
-			where: mapWhereFilters(where),
-			model,
-			requiresClientFilter: fetchResult.requiresClientFilter,
+			join,
 		});
 
 		if (filteredItems.length === 0) {

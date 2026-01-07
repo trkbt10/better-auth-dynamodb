@@ -4,18 +4,21 @@
 import type { DynamoDBWhere } from "../types";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { ResolvedDynamoDBAdapterConfig } from "../../adapter-config";
-import { buildFilterExpression } from "../expressions/filter-expression";
-import { resolveTableName } from "../keys/table-name";
-import { queryCount } from "../operations/query";
-import { scanCount, scanItems } from "../operations/scan";
-import type { DynamoDBItem } from "../where/where-evaluator";
-import { buildKeyCondition } from "./key-condition";
+import { buildFilterExpression } from "./build-filter-expression";
+import { resolveTableName } from "./resolve-table-name";
+import { queryCount, queryItems } from "./query-command";
+import { scanCount, scanItems } from "./scan-command";
+import type { DynamoDBItem } from "./where-evaluator";
+import { buildKeyCondition } from "./build-key-condition";
 
 export const createFetchCount = (props: {
 	documentClient: DynamoDBDocumentClient;
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	getFieldAttributes: (args: { model: string; field: string }) => {
+		index?: boolean | undefined;
+	};
 }) => {
 	const resolveModelTableName = (model: string) =>
 		resolveTableName({
@@ -40,17 +43,46 @@ export const createFetchCount = (props: {
 			model: input.model,
 			where: input.where,
 			getFieldName: props.getFieldName,
+			getFieldAttributes: props.getFieldAttributes,
+			indexNameResolver: props.adapterConfig.indexNameResolver,
 		});
 		if (keyCondition) {
-			const count = await queryCount({
+			const filter = buildFilter(input.model, keyCondition.remainingWhere);
+			if (!filter.requiresClientFilter) {
+				const count = await queryCount({
+					documentClient: props.documentClient,
+					tableName,
+					indexName: keyCondition.indexName,
+					keyConditionExpression: keyCondition.keyConditionExpression,
+					filterExpression: filter.filterExpression,
+					expressionAttributeNames: {
+						...keyCondition.expressionAttributeNames,
+						...filter.expressionAttributeNames,
+					},
+					expressionAttributeValues: {
+						...keyCondition.expressionAttributeValues,
+						...filter.expressionAttributeValues,
+					},
+				});
+				return { count, requiresClientFilter: false, items: [] };
+			}
+
+			const items = (await queryItems({
 				documentClient: props.documentClient,
 				tableName,
+				indexName: keyCondition.indexName,
 				keyConditionExpression: keyCondition.keyConditionExpression,
-				filterExpression: undefined,
-				expressionAttributeNames: keyCondition.expressionAttributeNames,
-				expressionAttributeValues: keyCondition.expressionAttributeValues,
-			});
-			return { count, requiresClientFilter: false, items: [] };
+				filterExpression: filter.filterExpression,
+				expressionAttributeNames: {
+					...keyCondition.expressionAttributeNames,
+					...filter.expressionAttributeNames,
+				},
+				expressionAttributeValues: {
+					...keyCondition.expressionAttributeValues,
+					...filter.expressionAttributeValues,
+				},
+			})) as DynamoDBItem[];
+			return { count: 0, requiresClientFilter: true, items };
 		}
 
 		const filter = buildFilter(input.model, input.where);

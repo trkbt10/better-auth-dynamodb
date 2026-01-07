@@ -2,7 +2,7 @@
  * @file Client-side filter application for DynamoDB fetcher.
  */
 import type { DynamoDBWhere } from "../types";
-import { applyWhereFilters, type DynamoDBItem } from "../where/where-evaluator";
+import { applyWhereFilters, type DynamoDBItem } from "./where-evaluator";
 
 export const applyClientFilter = (props: {
 	items: DynamoDBItem[];

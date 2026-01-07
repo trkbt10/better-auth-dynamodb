@@ -23,23 +23,23 @@ import { createFindOneMethod } from "./adapter-methods/find-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-import { applyClientFilter } from "./dynamodb/fetcher/client-filter";
-import { createFetchCount } from "./dynamodb/fetcher/fetch-count";
-import { createFetchItems } from "./dynamodb/fetcher/fetch-items";
-import { resolveScanLimit } from "./dynamodb/fetcher/scan-limit";
-import { resolveTableName } from "./dynamodb/keys/table-name";
+import { applyClientFilter } from "./dynamodb/query-utils/apply-client-filter";
+import { createFetchCount } from "./dynamodb/query-utils/create-fetch-count";
+import { createFetchItems } from "./dynamodb/query-utils/create-fetch-items";
+import { resolveScanLimit } from "./dynamodb/query-utils/resolve-scan-limit";
+import { resolveTableName } from "./dynamodb/query-utils/resolve-table-name";
 import {
 	createTransactionState,
 	executeTransaction,
 	type DynamoDBTransactionState,
-} from "./dynamodb/operations/transaction";
+} from "./dynamodb/query-utils/transaction";
 import type { ResolvedDynamoDBAdapterConfig } from "./adapter-config";
 import type {
 	DynamoDBWhere,
 	DynamoDBWhereConnector,
 	DynamoDBWhereOperator,
 } from "./dynamodb/types";
-import type { DynamoDBItem } from "./dynamodb/where/where-evaluator";
+import type { DynamoDBItem } from "./dynamodb/query-utils/where-evaluator";
 
 const ensureDocumentClient = (
 	documentClient: DynamoDBDocumentClient | undefined,
@@ -90,18 +90,20 @@ const createDynamoDbCustomizer = (props: {
 }): AdapterFactoryCustomizeAdapterCreator => {
 	const { documentClient, adapterConfig, transactionState } = props;
 
-	return ({ getFieldName, getDefaultModelName }) => {
+	return ({ getFieldName, getDefaultModelName, getFieldAttributes }) => {
 		const fetchItems = createFetchItems({
 			documentClient,
 			adapterConfig,
 			getFieldName,
 			getDefaultModelName,
+			getFieldAttributes,
 		});
 		const fetchCount = createFetchCount({
 			documentClient,
 			adapterConfig,
 			getFieldName,
 			getDefaultModelName,
+			getFieldAttributes,
 		});
 		const applyClientFilterForFetch = (input: {
 			items: DynamoDBItem[];

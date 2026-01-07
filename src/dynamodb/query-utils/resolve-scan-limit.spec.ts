@@ -1,7 +1,7 @@
 /**
  * @file Tests for scan limit resolver.
  */
-import { resolveScanLimit } from "./scan-limit";
+import { resolveScanLimit } from "./resolve-scan-limit";
 
 describe("resolveScanLimit", () => {
 	test("returns undefined when client filter needed", () => {

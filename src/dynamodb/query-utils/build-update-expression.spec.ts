@@ -2,7 +2,7 @@
  * @file Tests for DynamoDB update expression builder.
  */
 import { DynamoDBAdapterError } from "../errors/errors";
-import { buildUpdateExpression } from "./update-expression";
+import { buildUpdateExpression } from "./build-update-expression";
 
 describe("buildUpdateExpression", () => {
 	const captureError = (fn: () => void): unknown => {

@@ -2,7 +2,7 @@
  * @file Tests for client-side filter application.
  */
 import type { DynamoDBWhere } from "../types";
-import { applyClientFilter } from "./client-filter";
+import { applyClientFilter } from "./apply-client-filter";
 
 describe("applyClientFilter", () => {
 	const getFieldName = (props: { model: string; field: string }) => props.field;

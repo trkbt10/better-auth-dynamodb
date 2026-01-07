@@ -1,7 +1,7 @@
 /**
  * @file Tests for fetch limit resolver.
  */
-import { resolveFetchLimit } from "./fetch-limit";
+import { resolveFetchLimit } from "./resolve-fetch-limit";
 
 describe("resolveFetchLimit", () => {
 	test("returns undefined when client filter required", () => {

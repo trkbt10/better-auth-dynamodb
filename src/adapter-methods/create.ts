@@ -3,7 +3,7 @@
  */
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import { addTransactionOperation } from "../dynamodb/operations/transaction";
+import { addTransactionOperation } from "../dynamodb/query-utils/transaction";
 import type { AdapterMethodContext } from "./types";
 
 export const createCreateMethod = (context: AdapterMethodContext) => {

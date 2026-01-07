@@ -3,7 +3,7 @@
  */
 import { createDocumentClientStub } from "../../../spec/dynamodb-document-client";
 import { DynamoDBAdapterError } from "../errors/errors";
-import { resolveTableName } from "./table-name";
+import { resolveTableName } from "./resolve-table-name";
 
 describe("resolveTableName", () => {
 	const getDefaultModelName = (model: string) => model;

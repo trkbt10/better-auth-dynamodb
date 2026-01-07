@@ -8,7 +8,7 @@ import {
 	getOperatorHandler,
 	isClientOnlyOperator,
 	type FilterExpressionContext,
-} from "../where/where-operator";
+} from "./where-operator";
 
 export type DynamoDBFilterExpression = {
 	filterExpression: string | undefined;

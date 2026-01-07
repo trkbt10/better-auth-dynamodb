@@ -4,6 +4,8 @@
 import type { DynamoDBDocumentClient, ScanCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { applyExpressionAttributes } from "./apply-expression-attributes";
+import { resolveRemainingLimit } from "./resolve-remaining-limit";
 
 export type DynamoDBScanOptions = {
 	documentClient: DynamoDBDocumentClient;
@@ -12,20 +14,6 @@ export type DynamoDBScanOptions = {
 	expressionAttributeNames: Record<string, string>;
 	expressionAttributeValues: Record<string, NativeAttributeValue>;
 	limit?: number | undefined;
-};
-
-const resolveRemainingLimit = (
-	limit: number | undefined,
-	currentCount: number,
-): number | undefined => {
-	if (limit === undefined) {
-		return undefined;
-	}
-	const remaining = limit - currentCount;
-	if (remaining <= 0) {
-		return 0;
-	}
-	return remaining;
 };
 
 export const scanItems = async (
@@ -47,19 +35,11 @@ export const scanItems = async (
 			TableName: options.tableName,
 		};
 
-		if (options.filterExpression) {
-			commandInput.FilterExpression = options.filterExpression;
-		}
-
-		if (Object.keys(options.expressionAttributeNames).length > 0) {
-			commandInput.ExpressionAttributeNames =
-				options.expressionAttributeNames;
-		}
-
-		if (Object.keys(options.expressionAttributeValues).length > 0) {
-			commandInput.ExpressionAttributeValues =
-				options.expressionAttributeValues;
-		}
+		applyExpressionAttributes(commandInput, {
+			filterExpression: options.filterExpression,
+			expressionAttributeNames: options.expressionAttributeNames,
+			expressionAttributeValues: options.expressionAttributeValues,
+		});
 
 		if (state.lastEvaluatedKey) {
 			commandInput.ExclusiveStartKey = state.lastEvaluatedKey;
@@ -101,19 +81,11 @@ export const scanCount = async (
 			Select: "COUNT",
 		};
 
-		if (options.filterExpression) {
-			commandInput.FilterExpression = options.filterExpression;
-		}
-
-		if (Object.keys(options.expressionAttributeNames).length > 0) {
-			commandInput.ExpressionAttributeNames =
-				options.expressionAttributeNames;
-		}
-
-		if (Object.keys(options.expressionAttributeValues).length > 0) {
-			commandInput.ExpressionAttributeValues =
-				options.expressionAttributeValues;
-		}
+		applyExpressionAttributes(commandInput, {
+			filterExpression: options.filterExpression,
+			expressionAttributeNames: options.expressionAttributeNames,
+			expressionAttributeValues: options.expressionAttributeValues,
+		});
 
 		if (state.lastEvaluatedKey) {
 			commandInput.ExclusiveStartKey = state.lastEvaluatedKey;

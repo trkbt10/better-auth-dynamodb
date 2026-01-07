@@ -2,7 +2,7 @@
  * @file Tests for DynamoDB filter expression builder.
  */
 import type { DynamoDBWhere } from "../types";
-import { buildFilterExpression } from "./filter-expression";
+import { buildFilterExpression } from "./build-filter-expression";
 
 describe("buildFilterExpression", () => {
 	const getFieldName = (props: { model: string; field: string }) => props.field;
