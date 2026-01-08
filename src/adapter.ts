@@ -27,13 +27,9 @@ import type { CreateMethodOptions } from "./adapter-methods/create";
 import type { DeleteMethodOptions } from "./adapter-methods/delete-many";
 import type { FindManyOptions } from "./adapter-methods/find-many";
 import type { UpdateMethodOptions } from "./adapter-methods/update-many";
+import type { DynamoDBIndexKeySchema } from "./dynamodb/types";
 
 export type DynamoDBTableNameResolver = (modelName: string) => string;
-
-export type DynamoDBIndexKeySchema = {
-  partitionKey: string;
-  sortKey?: string | undefined;
-};
 
 export type DynamoDBAdapterConfig = {
   documentClient: DynamoDBDocumentClient;

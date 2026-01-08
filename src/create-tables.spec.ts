@@ -80,7 +80,7 @@ describe("createTables", () => {
 		};
 
 		for (const schema of multiTableSchemas) {
-			const indexes = schema.globalSecondaryIndexes?.map(
+			const indexes = schema.tableDefinition.globalSecondaryIndexes?.map(
 				(index) => index.IndexName,
 			) ?? [];
 			expect(indexes).toEqual(expectedIndexes[schema.tableName] ?? []);

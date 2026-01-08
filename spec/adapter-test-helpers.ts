@@ -7,7 +7,7 @@ import {
 	waitUntilTableNotExists,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { TableSchema } from "../src/table-schema";
+import type { TableSchema } from "../src/dynamodb/types";
 
 type WaiterConfiguration = Omit<
 	Parameters<typeof waitUntilTableNotExists>[0],

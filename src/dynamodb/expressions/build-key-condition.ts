@@ -1,8 +1,7 @@
 /**
  * @file Key condition builder for DynamoDB adapter.
  */
-import type { DynamoDBWhere } from "../types";
-import type { DynamoDBIndexKeySchema } from "../../adapter";
+import type { DynamoDBIndexKeySchema, DynamoDBWhere } from "../types";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { normalizeWhereOperator } from "./where-operator";
 

@@ -7,7 +7,7 @@ import {
   waitUntilTableExists,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import type { TableSchema } from "./table-schema";
+import type { TableSchema } from "./dynamodb/types";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
 type WaiterConfiguration = Omit<
   Parameters<typeof waitUntilTableExists>[0],
@@ -52,13 +52,14 @@ export const createTables = async (options: CreateTablesOptions): Promise<string
     if (existingTables.includes(table.tableName)) {
       continue;
     }
+    const definition = table.tableDefinition;
     await options.client.send(
       new CreateTableCommand({
         TableName: table.tableName,
-        AttributeDefinitions: table.attributeDefinitions,
-        KeySchema: table.keySchema,
-        BillingMode: table.billingMode,
-        GlobalSecondaryIndexes: table.globalSecondaryIndexes,
+        AttributeDefinitions: definition.attributeDefinitions,
+        KeySchema: definition.keySchema,
+        BillingMode: definition.billingMode,
+        GlobalSecondaryIndexes: definition.globalSecondaryIndexes,
       }),
     );
     await waitUntilTableExists({ client: options.client, ...waitConfig }, { TableName: table.tableName });
