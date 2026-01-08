@@ -9,10 +9,21 @@ export default defineConfig({
     outDir: "dist",
     lib: {
       entry: "src/index.ts",
-      formats: ["cjs", "es"],
+      formats: ["es", "cjs"],
+      fileName: (format) => `index.${format === "cjs" ? "cjs" : "js"}`,
     },
     rollupOptions: {
-      external: [/node:.+/],
+      external: [
+        // Node.js built-ins
+        /^node:.+/,
+        // Peer dependencies (user-provided)
+        "@aws-sdk/client-dynamodb",
+        "@aws-sdk/lib-dynamodb",
+        "@aws-sdk/util-dynamodb",
+        "better-auth",
+        // Better Auth internal modules
+        /^@better-auth\/.+/,
+      ],
     },
   },
 });

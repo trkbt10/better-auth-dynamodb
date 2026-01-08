@@ -3,7 +3,6 @@
 node_modules
 # output
 out
-dist
 *.tgz
 
 # code coverage
@@ -127,7 +126,6 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 
 # Gatsby files
 .cache/

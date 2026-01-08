@@ -7,6 +7,7 @@ import type {
   AdapterFactoryOptions,
   DBAdapter,
   DBAdapterDebugLogOption,
+  DBAdapterFactoryConfig,
 } from "@better-auth/core/db/adapter";
 import { createAdapterFactory } from "@better-auth/core/db/adapter";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
@@ -31,10 +32,26 @@ import type { DynamoDBIndexKeySchema } from "./dynamodb/types";
 
 export type DynamoDBTableNameResolver = (modelName: string) => string;
 
-export type DynamoDBAdapterConfig = {
+/**
+ * Options inherited from Better Auth's DBAdapterFactoryConfig.
+ */
+type InheritedAdapterFactoryConfig = Pick<
+  DBAdapterFactoryConfig,
+  | "debugLogs"
+  | "usePlural"
+  | "customIdGenerator"
+  | "disableIdGeneration"
+  | "mapKeysTransformInput"
+  | "mapKeysTransformOutput"
+  | "customTransformInput"
+  | "customTransformOutput"
+>;
+
+/**
+ * DynamoDB-specific adapter configuration.
+ */
+type DynamoDBSpecificConfig = {
   documentClient: DynamoDBDocumentClient;
-  debugLogs?: DBAdapterDebugLogOption | undefined;
-  usePlural?: boolean | undefined;
   tableNamePrefix?: string | undefined;
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
@@ -42,8 +59,15 @@ export type DynamoDBAdapterConfig = {
   indexKeySchemaResolver?:
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
     | undefined;
+  /**
+   * Enable adapter-layer transactions.
+   * Unlike DBAdapterFactoryConfig.transaction (which accepts a function),
+   * this is a simple boolean that enables DynamoDB TransactWriteItems.
+   */
   transaction?: boolean | undefined;
 };
+
+export type DynamoDBAdapterConfig = DynamoDBSpecificConfig & InheritedAdapterFactoryConfig;
 
 export type ResolvedDynamoDBAdapterConfig = {
   documentClient: DynamoDBDocumentClient;
@@ -142,12 +166,15 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
       debugLogs: resolvedConfig.debugLogs ?? false,
       supportsArrays: true,
       supportsJSON: true,
-      supportsUUIDs: true,
+      supportsUUIDs: false,
       supportsNumericIds: false,
       supportsDates: false,
-      customIdGenerator() {
-        return randomUUID();
-      },
+      customIdGenerator: config.customIdGenerator ?? (() => randomUUID()),
+      disableIdGeneration: config.disableIdGeneration,
+      mapKeysTransformInput: config.mapKeysTransformInput,
+      mapKeysTransformOutput: config.mapKeysTransformOutput,
+      customTransformInput: config.customTransformInput,
+      customTransformOutput: config.customTransformOutput,
       transaction: false,
     },
     adapter: createDynamoDbCustomizer({
