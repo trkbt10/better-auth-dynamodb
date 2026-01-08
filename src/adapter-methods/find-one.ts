@@ -2,9 +2,9 @@
  * @file Find-one method for the DynamoDB adapter.
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
-import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { FindManyOptions } from "./find-many";
-import { createFindManyExecutor } from "./find-many";
+import { buildQueryPlan } from "../adapter/planner/build-query-plan";
+import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";
 
 type FindOneOptions = FindManyOptions;
@@ -13,8 +13,13 @@ export const createFindOneMethod = (
 	client: AdapterClientContainer,
 	options: FindOneOptions,
 ) => {
-	const { getFieldName } = options;
-	const executeFindMany = createFindManyExecutor(client, options);
+	const executePlan = createQueryPlanExecutor({
+		documentClient: client.documentClient,
+		adapterConfig: options.adapterConfig,
+		getFieldName: options.getFieldName,
+		getDefaultModelName: options.getDefaultModelName,
+		getFieldAttributes: options.getFieldAttributes,
+	});
 
 	return async <T>({
 		model,
@@ -27,39 +32,24 @@ export const createFindOneMethod = (
 		select?: string[] | undefined;
 		join?: JoinConfig | undefined;
 	}) => {
-		if (join) {
-			throw new DynamoDBAdapterError(
-				"UNSUPPORTED_JOIN",
-				"DynamoDB adapter does not support joins.",
-			);
-		}
-
-		const filteredItems = await executeFindMany({
+		const plan = buildQueryPlan({
 			model,
 			where,
+			select,
+			sortBy: undefined,
 			limit: 1,
+			offset: 0,
 			join,
+			getFieldName: options.getFieldName,
+			getFieldAttributes: options.getFieldAttributes,
+			adapterConfig: options.adapterConfig,
 		});
+		const filteredItems = await executePlan(plan);
 
 		if (filteredItems.length === 0) {
 			return null;
 		}
 
-		const item = filteredItems[0] as T;
-		if (!select || select.length === 0) {
-			return item;
-		}
-
-		const selection: Record<string, unknown> = {};
-		select.forEach((field) => {
-			const resolvedField = getFieldName({ model, field });
-			if (resolvedField in (item as Record<string, unknown>)) {
-				selection[resolvedField] = (item as Record<string, unknown>)[
-					resolvedField
-				];
-			}
-		});
-
-		return selection as T;
+		return filteredItems[0] as T;
 	};
 };

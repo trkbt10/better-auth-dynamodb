@@ -1,19 +1,15 @@
 /**
  * @file Tests for client-side filter application.
  */
-import type { DynamoDBWhere } from "../types";
 import { applyClientFilter } from "./apply-client-filter";
+import type { NormalizedWhere } from "../query-plan";
 
 describe("applyClientFilter", () => {
-	const getFieldName = (props: { model: string; field: string }) => props.field;
-
 	test("returns items when filtering not required", () => {
 		const items = [{ id: "1" }, { id: "2" }];
 		const result = applyClientFilter({
 			items,
 			where: undefined,
-			model: "user",
-			getFieldName,
 			requiresClientFilter: false,
 		});
 
@@ -25,14 +21,18 @@ describe("applyClientFilter", () => {
 			{ id: "1", name: "alpha" },
 			{ id: "2", name: "beta" },
 		];
-		const where: DynamoDBWhere[] = [
-			{ field: "name", operator: "ends_with", value: "ta" },
+		const where: NormalizedWhere[] = [
+			{
+				field: "name",
+				operator: "ends_with",
+				value: "ta",
+				connector: "AND",
+				requiresClientFilter: true,
+			},
 		];
 		const result = applyClientFilter({
 			items,
 			where,
-			model: "user",
-			getFieldName,
 			requiresClientFilter: true,
 		});
 

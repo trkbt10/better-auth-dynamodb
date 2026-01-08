@@ -1,11 +1,9 @@
 /**
- * @file Tests for DynamoDB sort helpers.
+ * @file Tests for adapter sort helpers.
  */
-import { applySort, sortItems } from "./record-sort";
+import { applySort, sortItems } from "./apply-sort";
 
 describe("sortItems", () => {
-	const getFieldName = (props: { model: string; field: string }) => props.field;
-
 	test("sorts ascending with nulls last", () => {
 		const items = [
 			{ id: "a", age: 30 },
@@ -14,10 +12,8 @@ describe("sortItems", () => {
 		];
 
 		const sorted = sortItems(items, {
-			model: "user",
 			field: "age",
 			direction: "asc",
-			getFieldName,
 		});
 
 		expect(sorted.map((item) => item.id)).toEqual(["c", "a", "b"]);
@@ -31,10 +27,8 @@ describe("sortItems", () => {
 		];
 
 		const sorted = sortItems(items, {
-			model: "user",
 			field: "score",
 			direction: "desc",
-			getFieldName,
 		});
 
 		expect(sorted.map((item) => item.id)).toEqual(["b", "c", "a"]);
@@ -42,14 +36,10 @@ describe("sortItems", () => {
 });
 
 describe("applySort", () => {
-	const getFieldName = (props: { model: string; field: string }) => props.field;
-
 	test("returns original array when no sortBy", () => {
 		const items = [{ id: "a" }, { id: "b" }];
 		const result = applySort(items, {
-			model: "user",
 			sortBy: undefined,
-			getFieldName,
 		});
 
 		expect(result).toBe(items);

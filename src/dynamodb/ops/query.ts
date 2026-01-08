@@ -1,7 +1,10 @@
 /**
  * @file DynamoDB query helpers for adapter.
  */
-import type { DynamoDBDocumentClient, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
+import type {
+	DynamoDBDocumentClient,
+	QueryCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { applyExpressionAttributes } from "./apply-expression-attributes";
@@ -23,7 +26,9 @@ export const queryItems = async (
 ): Promise<Record<string, NativeAttributeValue>[]> => {
 	const items: Record<string, NativeAttributeValue>[] = [];
 	const state = {
-		lastEvaluatedKey: undefined as Record<string, NativeAttributeValue> | undefined,
+		lastEvaluatedKey: undefined as
+			| Record<string, NativeAttributeValue>
+			| undefined,
 	};
 
 	for (;;) {
@@ -63,7 +68,9 @@ export const queryItems = async (
 		items.push(...pageItems);
 
 		state.lastEvaluatedKey =
-			(result.LastEvaluatedKey as Record<string, NativeAttributeValue> | undefined) ??
+			(result.LastEvaluatedKey as
+				| Record<string, NativeAttributeValue>
+				| undefined) ??
 			undefined;
 
 		if (!state.lastEvaluatedKey) {
@@ -78,7 +85,9 @@ export const queryCount = async (
 	options: Omit<DynamoDBQueryOptions, "limit">,
 ): Promise<number> => {
 	const state = {
-		lastEvaluatedKey: undefined as Record<string, NativeAttributeValue> | undefined,
+		lastEvaluatedKey: undefined as
+			| Record<string, NativeAttributeValue>
+			| undefined,
 		count: 0,
 	};
 
@@ -108,7 +117,9 @@ export const queryCount = async (
 		);
 		state.count += result.Count ?? 0;
 		state.lastEvaluatedKey =
-			(result.LastEvaluatedKey as Record<string, NativeAttributeValue> | undefined) ??
+			(result.LastEvaluatedKey as
+				| Record<string, NativeAttributeValue>
+				| undefined) ??
 			undefined;
 
 		if (!state.lastEvaluatedKey) {

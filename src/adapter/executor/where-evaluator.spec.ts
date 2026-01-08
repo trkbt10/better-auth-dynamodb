@@ -1,27 +1,35 @@
 /**
  * @file Tests for in-memory where evaluation.
  */
-import type { DynamoDBWhere } from "../types";
+import type { NormalizedWhere } from "../query-plan";
 import { applyWhereFilters } from "./where-evaluator";
 
 describe("applyWhereFilters", () => {
-	const getFieldName = (props: { model: string; field: string }) => props.field;
-
 	test("filters with AND conditions", () => {
 		const items = [
 			{ id: "1", name: "alpha", age: 2 },
 			{ id: "2", name: "beta", age: 5 },
 		];
-		const where: DynamoDBWhere[] = [
-			{ field: "age", operator: "gt", value: 3 },
-			{ field: "name", operator: "ends_with", value: "ta" },
+		const where: NormalizedWhere[] = [
+			{
+				field: "age",
+				operator: "gt",
+				value: 3,
+				connector: "AND",
+				requiresClientFilter: false,
+			},
+			{
+				field: "name",
+				operator: "ends_with",
+				value: "ta",
+				connector: "AND",
+				requiresClientFilter: true,
+			},
 		];
 
 		const result = applyWhereFilters({
 			items,
 			where,
-			model: "user",
-			getFieldName,
 		});
 
 		expect(result).toEqual([{ id: "2", name: "beta", age: 5 }]);
@@ -32,21 +40,26 @@ describe("applyWhereFilters", () => {
 			{ id: "1", status: "active" },
 			{ id: "2", status: "inactive" },
 		];
-		const where: DynamoDBWhere[] = [
-			{ field: "status", operator: "eq", value: "active", connector: "OR" },
+		const where: NormalizedWhere[] = [
+			{
+				field: "status",
+				operator: "eq",
+				value: "active",
+				connector: "OR",
+				requiresClientFilter: false,
+			},
 			{
 				field: "status",
 				operator: "eq",
 				value: "inactive",
 				connector: "OR",
+				requiresClientFilter: false,
 			},
 		];
 
 		const result = applyWhereFilters({
 			items,
 			where,
-			model: "user",
-			getFieldName,
 		});
 
 		expect(result.map((item) => item.id)).toEqual(["1", "2"]);

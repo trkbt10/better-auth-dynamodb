@@ -52,6 +52,7 @@ describe("dynamodbAdapter", () => {
 		const adapterFactory = dynamodbAdapter({
 			documentClient,
 			tableNamePrefix: "auth_",
+			scanMaxPages: 1,
 		});
 		const adapter = adapterFactory({});
 
@@ -106,6 +107,7 @@ describe("dynamodbAdapter", () => {
 		const adapterFactory = dynamodbAdapter({
 			documentClient,
 			tableNamePrefix: "auth_",
+			scanMaxPages: 1,
 		});
 		const adapter = adapterFactory({});
 		const where: Where[] = [
@@ -131,6 +133,7 @@ describe("dynamodbAdapter", () => {
 		const adapterFactory = dynamodbAdapter({
 			documentClient,
 			tableNamePrefix: "auth_",
+			scanMaxPages: 1,
 		});
 		const adapter = adapterFactory({});
 		const where: Where[] = [

@@ -12,6 +12,7 @@ export type DynamoDBAdapterConfig = {
 	usePlural?: boolean | undefined;
 	tableNamePrefix?: string | undefined;
 	tableNameResolver?: DynamoDBTableNameResolver | undefined;
+	scanMaxPages?: number | undefined;
 	indexNameResolver?:
 		| ((props: { model: string; field: string }) => string | undefined)
 		| undefined;
@@ -24,6 +25,7 @@ export type ResolvedDynamoDBAdapterConfig = {
 	usePlural: boolean;
 	tableNamePrefix?: string | undefined;
 	tableNameResolver?: DynamoDBTableNameResolver | undefined;
+	scanMaxPages?: number | undefined;
 	indexNameResolver?:
 		| ((props: { model: string; field: string }) => string | undefined)
 		| undefined;
@@ -39,6 +41,7 @@ export const resolveAdapterConfig = (
 		usePlural: config.usePlural ?? false,
 		tableNamePrefix: config.tableNamePrefix,
 		tableNameResolver: config.tableNameResolver,
+		scanMaxPages: config.scanMaxPages,
 		indexNameResolver: config.indexNameResolver,
 		transaction: config.transaction ?? false,
 	};

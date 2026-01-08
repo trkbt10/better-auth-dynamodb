@@ -1,5 +1,5 @@
 /**
- * @file Key condition builder for DynamoDB fetcher.
+ * @file Key condition builder for DynamoDB adapter.
  */
 import type { DynamoDBWhere } from "../types";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";

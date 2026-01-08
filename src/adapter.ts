@@ -25,7 +25,7 @@ import {
 	createTransactionState,
 	executeTransaction,
 	type DynamoDBTransactionState,
-} from "./dynamodb/query-utils/transaction";
+} from "./dynamodb/ops/transaction";
 import type { AdapterClientContainer } from "./adapter-methods/client-container";
 import type { CountMethodOptions } from "./adapter-methods/count";
 import type { CreateMethodOptions } from "./adapter-methods/create";

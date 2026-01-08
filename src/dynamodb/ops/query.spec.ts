@@ -3,7 +3,7 @@
  */
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocumentClientStub } from "../../../spec/dynamodb-document-client";
-import { queryCount, queryItems } from "./query-command";
+import { queryCount, queryItems } from "./query";
 
 describe("queryItems", () => {
 	test("paginates until exhaustion", async () => {

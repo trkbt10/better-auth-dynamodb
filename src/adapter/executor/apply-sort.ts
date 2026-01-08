@@ -1,5 +1,5 @@
 /**
- * @file Sorting helpers for DynamoDB adapter.
+ * @file Sorting helpers for adapter executor.
  */
 
 const resolveDirectionMultiplier = (direction: "asc" | "desc"): number => {
@@ -12,27 +12,21 @@ const resolveDirectionMultiplier = (direction: "asc" | "desc"): number => {
 export const sortItems = <T extends Record<string, unknown>>(
 	items: T[],
 	props: {
-		model: string;
 		field: string;
 		direction: "asc" | "desc";
-		getFieldName: (args: { model: string; field: string }) => string;
 	},
 ): T[] => {
 	if (items.length <= 1) {
 		return items;
 	}
 
-	const fieldName = props.getFieldName({
-		model: props.model,
-		field: props.field,
-	});
 	const directionMultiplier = resolveDirectionMultiplier(props.direction);
 	const isNullish = (value: unknown): value is null | undefined =>
 		value === null || value === undefined;
 
 	return [...items].sort((left, right) => {
-		const leftValue = left[fieldName];
-		const rightValue = right[fieldName];
+		const leftValue = left[props.field];
+		const rightValue = right[props.field];
 
 		if (leftValue === rightValue) {
 			return 0;
@@ -61,9 +55,7 @@ export const sortItems = <T extends Record<string, unknown>>(
 export const applySort = <T extends Record<string, unknown>>(
 	items: T[],
 	props: {
-		model: string;
 		sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
-		getFieldName: (args: { model: string; field: string }) => string;
 	},
 ): T[] => {
 	if (!props.sortBy) {
@@ -71,9 +63,7 @@ export const applySort = <T extends Record<string, unknown>>(
 	}
 
 	return sortItems(items, {
-		model: props.model,
 		field: props.sortBy.field,
 		direction: props.sortBy.direction,
-		getFieldName: props.getFieldName,
 	});
 };

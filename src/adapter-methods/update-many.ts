@@ -2,21 +2,19 @@
  * @file Update-many method for the DynamoDB adapter.
  */
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
-import { applyClientFilter } from "../dynamodb/query-utils/apply-client-filter";
-import { buildUpdateExpression } from "../dynamodb/query-utils/build-update-expression";
-import { buildPrimaryKey } from "../dynamodb/query-utils/build-primary-key";
-import { createFetchItems } from "../dynamodb/query-utils/create-fetch-items";
-import { resolveTableName } from "../dynamodb/query-utils/resolve-table-name";
+import { buildQueryPlan } from "../adapter/planner/build-query-plan";
+import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
+import { buildPatchUpdateExpression } from "../dynamodb/expressions/build-patch-update-expression";
+import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
+import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import {
 	addTransactionOperation,
 	type DynamoDBTransactionState,
-} from "../dynamodb/query-utils/transaction";
-import type { DynamoDBItem } from "../dynamodb/query-utils/where-evaluator";
+} from "../dynamodb/ops/transaction";
+import type { DynamoDBItem } from "../adapter/executor/where-evaluator";
 import type { AdapterClientContainer } from "./client-container";
-import { mapWhereFilters } from "./map-where-filters";
 
 type UpdateExecutionInput = {
 	model: string;
@@ -31,18 +29,26 @@ type UpdateExecutionResult = {
 	updatedItems: Record<string, unknown>[];
 };
 
-const applyUpdateData = <T extends Record<string, unknown>>(
+const applyPatchData = <T extends Record<string, unknown>>(
 	item: T,
 	update: Record<string, unknown>,
-): T => {
-	const entries = Object.entries(update).filter(
-		([, value]) => value !== undefined,
+): Record<string, unknown> =>
+	Object.entries(update).reduce<Record<string, unknown>>(
+		(acc, [key, value]) => ({ ...acc, [key]: value }),
+		{ ...item },
 	);
-	const updates = entries.reduce<Record<string, unknown>>((acc, [key, value]) => {
-		acc[key] = value;
-		return acc;
-	}, {});
-	return { ...item, ...updates };
+
+const stripUndefined = <T extends Record<string, unknown>>(item: T): T => {
+	const filtered = Object.entries(item).reduce<Record<string, unknown>>(
+		(acc, [key, value]) => {
+			if (value === undefined) {
+				return acc;
+			}
+			return { ...acc, [key]: value };
+		},
+		{},
+	);
+	return filtered as T;
 };
 
 const buildReturnValues = (returnUpdatedItems: boolean) => {
@@ -74,7 +80,7 @@ export const createUpdateExecutor = (
 		getFieldAttributes,
 		transactionState,
 	} = options;
-	const fetchItems = createFetchItems({
+	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
@@ -98,35 +104,39 @@ export const createUpdateExecutor = (
 		returnUpdatedItems,
 	}: UpdateExecutionInput): Promise<UpdateExecutionResult> => {
 		const tableName = resolveModelTableName(model);
-		const mappedWhere = mapWhereFilters(where);
-		const result = await fetchItems({
+		const plan = buildQueryPlan({
 			model,
-			where: mappedWhere,
+			where,
+			select: undefined,
+			sortBy: undefined,
 			limit,
-		});
-
-		const filteredItems = applyClientFilter({
-			items: result.items,
-			where: mappedWhere,
-			model,
+			offset: undefined,
+			join: undefined,
 			getFieldName,
-			requiresClientFilter: result.requiresClientFilter,
+			getFieldAttributes,
+			adapterConfig,
 		});
+		const filteredItems = await executePlan(plan);
 
 		if (filteredItems.length === 0) {
 			return { updatedCount: 0, updatedItems: [] };
 		}
 
 		const primaryKeyName = getPrimaryKeyName(model);
-		const updateExpression = buildUpdateExpression(
-			update as Record<string, NativeAttributeValue>,
-		);
 		const state: UpdateExecutionResult = {
 			updatedCount: 0,
 			updatedItems: [],
 		};
 
 		for (const item of filteredItems) {
+			const nextItem = applyPatchData(
+				item as Record<string, unknown>,
+				update as Record<string, unknown>,
+			);
+			const updateExpression = buildPatchUpdateExpression({
+				prev: item as Record<string, unknown>,
+				next: nextItem,
+			});
 			const key = buildPrimaryKey({
 				item: item as DynamoDBItem,
 				keyField: primaryKeyName,
@@ -144,10 +154,7 @@ export const createUpdateExecutor = (
 				});
 				if (returnUpdatedItems) {
 					state.updatedItems.push(
-						applyUpdateData(
-							item as Record<string, unknown>,
-							update as Record<string, unknown>,
-						),
+						stripUndefined(nextItem as Record<string, unknown>),
 					);
 				}
 			} else {

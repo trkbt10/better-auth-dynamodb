@@ -28,6 +28,7 @@ describe("resolveAdapterConfig", () => {
 			usePlural: true,
 			tableNamePrefix: "auth_",
 			tableNameResolver: resolver,
+			scanMaxPages: 3,
 			transaction: false,
 		});
 
@@ -35,5 +36,6 @@ describe("resolveAdapterConfig", () => {
 		expect(resolved.usePlural).toBe(true);
 		expect(resolved.tableNamePrefix).toBe("auth_");
 		expect(resolved.tableNameResolver).toBe(resolver);
+		expect(resolved.scanMaxPages).toBe(3);
 	});
 });

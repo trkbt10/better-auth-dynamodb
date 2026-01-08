@@ -5,11 +5,11 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
 import type { AdapterClientContainer } from "./client-container";
-import { resolveTableName } from "../dynamodb/query-utils/resolve-table-name";
+import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import {
 	addTransactionOperation,
 	type DynamoDBTransactionState,
-} from "../dynamodb/query-utils/transaction";
+} from "../dynamodb/ops/transaction";
 
 export type CreateMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;

@@ -4,17 +4,16 @@
 import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
-import { applyClientFilter } from "../dynamodb/query-utils/apply-client-filter";
-import { buildPrimaryKey } from "../dynamodb/query-utils/build-primary-key";
-import { createFetchItems } from "../dynamodb/query-utils/create-fetch-items";
-import { resolveTableName } from "../dynamodb/query-utils/resolve-table-name";
+import { buildQueryPlan } from "../adapter/planner/build-query-plan";
+import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
+import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
+import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import {
 	addTransactionOperation,
 	type DynamoDBTransactionState,
-} from "../dynamodb/query-utils/transaction";
-import type { DynamoDBItem } from "../dynamodb/query-utils/where-evaluator";
+} from "../dynamodb/ops/transaction";
+import type { DynamoDBItem } from "../adapter/executor/where-evaluator";
 import type { AdapterClientContainer } from "./client-container";
-import { mapWhereFilters } from "./map-where-filters";
 
 type DeleteExecutionInput = {
 	model: string;
@@ -44,7 +43,7 @@ export const createDeleteExecutor = (
 		getFieldAttributes,
 		transactionState,
 	} = options;
-	const fetchItems = createFetchItems({
+	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
@@ -62,20 +61,19 @@ export const createDeleteExecutor = (
 
 	return async ({ model, where, limit }: DeleteExecutionInput): Promise<number> => {
 		const tableName = resolveModelTableName(model);
-		const mappedWhere = mapWhereFilters(where);
-		const result = await fetchItems({
+		const plan = buildQueryPlan({
 			model,
-			where: mappedWhere,
+			where,
+			select: undefined,
+			sortBy: undefined,
 			limit,
-		});
-
-		const filteredItems = applyClientFilter({
-			items: result.items,
-			where: mappedWhere,
-			model,
+			offset: undefined,
+			join: undefined,
 			getFieldName,
-			requiresClientFilter: result.requiresClientFilter,
+			getFieldAttributes,
+			adapterConfig,
 		});
+		const filteredItems = await executePlan(plan);
 
 		if (filteredItems.length === 0) {
 			return 0;

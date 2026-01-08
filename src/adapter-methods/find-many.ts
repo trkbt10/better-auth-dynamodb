@@ -2,14 +2,10 @@
  * @file Find-many method for the DynamoDB adapter.
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
-import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
-import { applyClientFilter } from "../dynamodb/query-utils/apply-client-filter";
-import { createFetchItems } from "../dynamodb/query-utils/create-fetch-items";
-import { applySort } from "../dynamodb/query-utils/record-sort";
-import { resolveScanLimit } from "../dynamodb/query-utils/resolve-scan-limit";
+import { buildQueryPlan } from "../adapter/planner/build-query-plan";
+import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";
-import { mapWhereFilters } from "./map-where-filters";
 
 type FindManyInput = {
 	model: string;
@@ -40,7 +36,7 @@ export const createFindManyExecutor = (
 		getDefaultModelName,
 		getFieldAttributes,
 	} = options;
-	const fetchItems = createFetchItems({
+	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
@@ -56,42 +52,20 @@ export const createFindManyExecutor = (
 		offset,
 		join,
 	}: FindManyInput) => {
-		if (join) {
-			throw new DynamoDBAdapterError(
-				"UNSUPPORTED_JOIN",
-				"DynamoDB adapter does not support joins.",
-			);
-		}
-
-		const offsetValue = offset ?? 0;
-		const mappedWhere = mapWhereFilters(where);
-		const scanLimit = resolveScanLimit({
-			limit,
-			offset: offsetValue,
-			sortByDefined: Boolean(sortBy),
-			requiresClientFilter: false,
-		});
-		const result = await fetchItems({
+		const plan = buildQueryPlan({
 			model,
-			where: mappedWhere ?? [],
-			limit: scanLimit,
-		});
-
-		const filteredItems = applyClientFilter({
-			items: result.items,
-			where: mappedWhere,
-			model,
-			getFieldName,
-			requiresClientFilter: result.requiresClientFilter,
-		});
-
-		const sortedItems = applySort(filteredItems, {
-			model,
+			where,
+			select: undefined,
 			sortBy,
+			limit,
+			offset,
+			join,
 			getFieldName,
+			getFieldAttributes,
+			adapterConfig,
 		});
 
-		return sortedItems.slice(offsetValue, offsetValue + limit);
+		return executePlan(plan);
 	};
 };
 
