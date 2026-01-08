@@ -1,0 +1,1 @@
+{"version":3,"file":"build-primary-key.d.ts","sourceRoot":"","sources":["../../../src/dynamodb/mapping/build-primary-key.ts"],"names":[],"mappings":"AAAA;;GAEG;AACH,OAAO,KAAK,EAAE,oBAAoB,EAAE,MAAM,wBAAwB,CAAC;AAGnE,eAAO,MAAM,eAAe,GAAI,OAAO;IACtC,IAAI,EAAE,MAAM,CAAC,MAAM,EAAE,oBAAoB,CAAC,CAAC;IAC3C,QAAQ,EAAE,MAAM,CAAC;CACjB,KAAG,MAAM,CAAC,MAAM,EAAE,oBAAoB,CAStC,CAAC"}

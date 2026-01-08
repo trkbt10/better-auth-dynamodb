@@ -1,0 +1,1 @@
+{"version":3,"file":"client-container.d.ts","sourceRoot":"","sources":["../../src/adapter-methods/client-container.ts"],"names":[],"mappings":"AAAA;;GAEG;AACH,OAAO,KAAK,EAAE,sBAAsB,EAAE,MAAM,uBAAuB,CAAC;AAEpE,MAAM,MAAM,sBAAsB,GAAG;IACpC,cAAc,EAAE,sBAAsB,CAAC;CACvC,CAAC"}
