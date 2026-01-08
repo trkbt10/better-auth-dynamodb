@@ -64,6 +64,53 @@ const resolveNormalizedSort = (props: {
 	};
 };
 
+const resolveServerSort = (props: {
+	model: string;
+	baseStrategy: ExecutionStrategy;
+	normalizedSort?: { field: string; direction: "asc" | "desc" } | undefined;
+	adapterConfig: Pick<DynamoDBAdapterConfig, "indexKeySchemaResolver">;
+}): { field: string; direction: "asc" | "desc" } | undefined => {
+	if (!props.normalizedSort) {
+		return undefined;
+	}
+	if (props.baseStrategy.kind !== "query") {
+		return undefined;
+	}
+	if (props.baseStrategy.key !== "gsi") {
+		return undefined;
+	}
+	if (!props.baseStrategy.indexName) {
+		return undefined;
+	}
+	if (!props.adapterConfig.indexKeySchemaResolver) {
+		return undefined;
+	}
+	const keySchema = props.adapterConfig.indexKeySchemaResolver({
+		model: props.model,
+		indexName: props.baseStrategy.indexName,
+	});
+	if (!keySchema || !keySchema.sortKey) {
+		return undefined;
+	}
+	if (keySchema.sortKey !== props.normalizedSort.field) {
+		return undefined;
+	}
+	return props.normalizedSort;
+};
+
+const resolveRequiresClientSort = (props: {
+	normalizedSort?: { field: string; direction: "asc" | "desc" } | undefined;
+	serverSort?: { field: string; direction: "asc" | "desc" } | undefined;
+}): boolean => {
+	if (!props.normalizedSort) {
+		return false;
+	}
+	if (props.serverSort) {
+		return false;
+	}
+	return true;
+};
+
 const resolveNormalizedSelect = (props: {
 	select?: string[] | undefined;
 	joins: ReturnType<typeof resolveJoinPlan>;
@@ -114,7 +161,10 @@ export const buildQueryPlan = (props: {
 	offset?: number | undefined;
 	join?: JoinConfig | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
-	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
+	adapterConfig: Pick<
+		DynamoDBAdapterConfig,
+		"indexNameResolver" | "indexKeySchemaResolver"
+	>;
 }): AdapterQueryPlan => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -158,16 +208,27 @@ export const buildQueryPlan = (props: {
 		getFieldName: props.getFieldName,
 		model: props.model,
 	});
+	const serverSort = resolveServerSort({
+		model: props.model,
+		baseStrategy,
+		normalizedSort,
+		adapterConfig: props.adapterConfig,
+	});
+	const requiresClientSort = resolveRequiresClientSort({
+		normalizedSort,
+		serverSort,
+	});
 	const execution: ExecutionPlan = {
 		baseStrategy,
 		joinStrategies,
 		requiresClientFilter,
-		requiresClientSort: Boolean(normalizedSort),
+		requiresClientSort,
+		serverSort,
 		fetchLimit: resolveFetchLimit({
 			limit: props.limit,
 			offset: props.offset,
 			requiresClientFilter,
-			requiresClientSort: Boolean(normalizedSort),
+			requiresClientSort,
 		}),
 	};
 

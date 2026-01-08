@@ -19,11 +19,17 @@ const buildSchemaHelpers = () => {
 };
 
 const indexNameResolver = (props: { model: string; field: string }) => {
+	if (props.model === "session" && props.field === "token") {
+		return "session_token_idx";
+	}
 	if (props.model === "session" && props.field === "userId") {
 		return "session_userId_idx";
 	}
 	if (props.model === "account" && props.field === "userId") {
 		return "account_userId_idx";
+	}
+	if (props.model === "account" && props.field === "providerId") {
+		return "account_providerId_accountId_idx";
 	}
 	if (props.model === "verification" && props.field === "identifier") {
 		return "verification_identifier_idx";
@@ -102,6 +108,34 @@ describe("resolveBaseStrategy", () => {
 		});
 
 		expect(result).toEqual({ kind: "batch-get" });
+	});
+
+	test("uses multi-query for indexed IN lists", () => {
+		const tokenField = helpers.getFieldName({
+			model: "session",
+			field: "token",
+		});
+		const result = resolveBaseStrategy({
+			model: "session",
+			where: [
+				{
+					field: tokenField,
+					operator: "in",
+					value: ["token_1", "token_2"],
+					connector: "AND",
+					requiresClientFilter: false,
+				},
+			],
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver },
+			hasOrConnector: false,
+		});
+
+		expect(result).toEqual({
+			kind: "multi-query",
+			indexName: "session_token_idx",
+			field: tokenField,
+		});
 	});
 
 	test("falls back to scan for OR connectors", () => {

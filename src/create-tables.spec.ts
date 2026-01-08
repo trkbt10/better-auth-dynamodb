@@ -54,7 +54,18 @@ describe("createTables", () => {
 		expect(sessionCommand?.input.GlobalSecondaryIndexes).toEqual([
 			{
 				IndexName: "session_userId_idx",
-				KeySchema: [{ AttributeName: "userId", KeyType: "HASH" }],
+				KeySchema: [
+					{ AttributeName: "userId", KeyType: "HASH" },
+					{ AttributeName: "createdAt", KeyType: "RANGE" },
+				],
+				Projection: { ProjectionType: "ALL" },
+			},
+			{
+				IndexName: "session_token_idx",
+				KeySchema: [
+					{ AttributeName: "token", KeyType: "HASH" },
+					{ AttributeName: "createdAt", KeyType: "RANGE" },
+				],
 				Projection: { ProjectionType: "ALL" },
 			},
 		]);
@@ -63,8 +74,8 @@ describe("createTables", () => {
 	test("keeps schema and indexNameResolver patterns aligned", () => {
 		const expectedIndexes: Record<string, string[]> = {
 			user: [],
-			session: ["session_userId_idx"],
-			account: ["account_userId_idx"],
+			session: ["session_userId_idx", "session_token_idx"],
+			account: ["account_userId_idx", "account_providerId_accountId_idx"],
 			verification: ["verification_identifier_idx"],
 		};
 

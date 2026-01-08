@@ -5,10 +5,14 @@ import {
 	DeleteTableCommand,
 	DynamoDBClient,
 	waitUntilTableNotExists,
-	type WaiterConfiguration,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { TableSchema } from "../src/table-schema";
+
+type WaiterConfiguration = Omit<
+	Parameters<typeof waitUntilTableNotExists>[0],
+	"client"
+>;
 
 export type DynamoDBTestConfig = {
 	endpoint: string;
@@ -67,7 +71,7 @@ export const tableNamesFromSchemas = (schemas: TableSchema[]): string[] => {
 export const deleteTables = async (props: {
 	client: DynamoDBClient;
 	tableNames: string[];
-	wait?: WaiterConfiguration<DynamoDBClient> | undefined;
+	wait?: WaiterConfiguration | undefined;
 }): Promise<void> => {
 	const waitConfig = props.wait ?? { maxWaitTime: 60, minDelay: 2 };
 

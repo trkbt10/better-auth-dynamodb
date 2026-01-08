@@ -2,6 +2,7 @@
  * @file Key condition builder for DynamoDB adapter.
  */
 import type { DynamoDBWhere } from "../types";
+import type { DynamoDBIndexKeySchema } from "../../adapter";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { normalizeWhereOperator } from "./where-operator";
 
@@ -10,6 +11,9 @@ export const buildKeyCondition = (props: {
 	where: DynamoDBWhere[] | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
 	indexNameResolver: (args: { model: string; field: string }) => string | undefined;
+	indexKeySchemaResolver?:
+		| ((args: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
+		| undefined;
 }): {
 	keyConditionExpression: string;
 	expressionAttributeNames: Record<string, string>;
@@ -17,7 +21,8 @@ export const buildKeyCondition = (props: {
 	indexName?: string | undefined;
 	remainingWhere: DynamoDBWhere[];
 } | null => {
-	const { model, where, getFieldName, indexNameResolver } = props;
+	const { model, where, getFieldName, indexNameResolver, indexKeySchemaResolver } =
+		props;
 	if (!where || where.length === 0) {
 		return null;
 	}
@@ -76,13 +81,91 @@ export const buildKeyCondition = (props: {
 	if (!indexName) {
 		return null;
 	}
-	const remainingWhere = where.filter((entry) => entry !== indexEntry.entry);
+
+	const resolveKeySchema = (): { sortKey?: string | undefined } | undefined => {
+		if (!indexKeySchemaResolver) {
+			return undefined;
+		}
+		return indexKeySchemaResolver({ model, indexName });
+	};
+	const resolveSortKeyEntry = (
+		sortKey: string | undefined,
+	): typeof normalizedEntries[number] | undefined => {
+		if (!sortKey) {
+			return undefined;
+		}
+		return normalizedEntries.find(
+			({ operator, fieldName }) =>
+				operator === "eq" && fieldName === sortKey,
+		);
+	};
+	const resolveKeyConditionExpression = (hasSortKey: boolean): string => {
+		if (!hasSortKey) {
+			return "#pk = :pk";
+		}
+		return "#pk = :pk AND #sk = :sk";
+	};
+	const buildExpressionAttributeNames = (props: {
+		partitionKey: string;
+		sortKey?: string | undefined;
+	}): Record<string, string> => {
+		if (!props.sortKey) {
+			return { "#pk": props.partitionKey };
+		}
+		return {
+			"#pk": props.partitionKey,
+			"#sk": props.sortKey,
+		};
+	};
+	const buildExpressionAttributeValues = (props: {
+		partitionValue: NativeAttributeValue;
+		sortValue?: NativeAttributeValue | undefined;
+	}): Record<string, NativeAttributeValue> => {
+		if (props.sortValue === undefined) {
+			return { ":pk": props.partitionValue };
+		}
+		return {
+			":pk": props.partitionValue,
+			":sk": props.sortValue,
+		};
+	};
+
+	const keySchema = resolveKeySchema();
+	const sortKeyName = keySchema?.sortKey;
+	const sortKeyEntry = resolveSortKeyEntry(sortKeyName);
+	const resolveSortKeyName = (entry: typeof sortKeyEntry): string | undefined => {
+		if (!entry) {
+			return undefined;
+		}
+		return sortKeyName;
+	};
+	const resolveSortKeyValue = (
+		entry: typeof sortKeyEntry,
+	): NativeAttributeValue | undefined => {
+		if (!entry) {
+			return undefined;
+		}
+		return entry.entry.value as NativeAttributeValue;
+	};
+	const remainingWhere = where.filter(
+		(entry) => entry !== indexEntry.entry && entry !== sortKeyEntry?.entry,
+	);
+	const keyConditionExpression = resolveKeyConditionExpression(
+		Boolean(sortKeyEntry),
+	);
+	const expressionAttributeNames = buildExpressionAttributeNames({
+		partitionKey: indexEntry.fieldName,
+		sortKey: resolveSortKeyName(sortKeyEntry),
+	});
+	const expressionAttributeValues = buildExpressionAttributeValues({
+		partitionValue: indexEntry.entry.value as NativeAttributeValue,
+		sortValue: resolveSortKeyValue(sortKeyEntry),
+	});
+
 	return {
-		keyConditionExpression: "#pk = :pk",
-		expressionAttributeNames: { "#pk": indexEntry.fieldName },
-		expressionAttributeValues: {
-			":pk": indexEntry.entry.value as NativeAttributeValue,
-		},
+		keyConditionExpression,
+		expressionAttributeNames,
+		expressionAttributeValues,
 		indexName,
 		remainingWhere,
 	};

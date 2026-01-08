@@ -41,6 +41,31 @@ const resolveGsiEntry = (props: {
 	return undefined;
 };
 
+const resolveGsiInEntry = (props: {
+	where: NormalizedWhere[];
+	model: string;
+	indexNameResolver: (args: { model: string; field: string }) => string | undefined;
+}): { entry: NormalizedWhere; indexName: string } | undefined => {
+	for (const entry of props.where) {
+		if (entry.operator !== "in") {
+			continue;
+		}
+		if (!Array.isArray(entry.value)) {
+			continue;
+		}
+		const indexName = props.indexNameResolver({
+			model: props.model,
+			field: entry.field,
+		});
+		if (!indexName) {
+			continue;
+		}
+		return { entry, indexName };
+	}
+
+	return undefined;
+};
+
 export const resolveBaseStrategy = (props: {
 	model: string;
 	where: NormalizedWhere[];
@@ -78,6 +103,19 @@ export const resolveBaseStrategy = (props: {
 	});
 	if (gsiEntry) {
 		return { kind: "query", key: "gsi", indexName: gsiEntry.indexName };
+	}
+
+	const gsiInEntry = resolveGsiInEntry({
+		where: props.where,
+		model: props.model,
+		indexNameResolver: props.adapterConfig.indexNameResolver,
+	});
+	if (gsiInEntry) {
+		return {
+			kind: "multi-query",
+			indexName: gsiInEntry.indexName,
+			field: gsiInEntry.entry.field,
+		};
 	}
 
 	const pkInEntry = resolvePkEntry({

@@ -96,6 +96,7 @@ export const createCountMethod = (
 				where: whereFilters,
 				getFieldName,
 				indexNameResolver: adapterConfig.indexNameResolver,
+				indexKeySchemaResolver: adapterConfig.indexKeySchemaResolver,
 			});
 			if (!keyCondition) {
 				throw new DynamoDBAdapterError(

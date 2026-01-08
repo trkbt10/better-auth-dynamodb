@@ -30,6 +30,11 @@ import type { UpdateMethodOptions } from "./adapter-methods/update-many";
 
 export type DynamoDBTableNameResolver = (modelName: string) => string;
 
+export type DynamoDBIndexKeySchema = {
+  partitionKey: string;
+  sortKey?: string | undefined;
+};
+
 export type DynamoDBAdapterConfig = {
   documentClient: DynamoDBDocumentClient;
   debugLogs?: DBAdapterDebugLogOption | undefined;
@@ -38,6 +43,9 @@ export type DynamoDBAdapterConfig = {
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
+  indexKeySchemaResolver?:
+    | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
+    | undefined;
   transaction?: boolean | undefined;
 };
 
@@ -49,6 +57,9 @@ export type ResolvedDynamoDBAdapterConfig = {
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
+  indexKeySchemaResolver?:
+    | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
+    | undefined;
   transaction: boolean;
 };
 
@@ -116,6 +127,7 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
     tableNameResolver: config.tableNameResolver,
     scanMaxPages: config.scanMaxPages,
     indexNameResolver: config.indexNameResolver,
+    indexKeySchemaResolver: config.indexKeySchemaResolver,
     transaction: config.transaction ?? false,
   };
   const documentClient = ensureDocumentClient(resolvedConfig.documentClient);

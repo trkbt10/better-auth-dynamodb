@@ -7,6 +7,7 @@ import { resolveTableName } from "./resolve-table-name";
 
 describe("resolveTableName", () => {
 	const getDefaultModelName = (model: string) => model;
+	const indexNameResolver = () => undefined;
 
 	const captureError = (fn: () => void): unknown => {
 		try {
@@ -26,7 +27,11 @@ describe("resolveTableName", () => {
 		const name = resolveTableName({
 			model: "user",
 			getDefaultModelName,
-			config: { documentClient, tableNameResolver: resolver },
+			config: {
+				documentClient,
+				tableNameResolver: resolver,
+				indexNameResolver,
+			},
 		});
 
 		expect(name).toBe("custom_user");
@@ -36,7 +41,11 @@ describe("resolveTableName", () => {
 		const name = resolveTableName({
 			model: "user",
 			getDefaultModelName,
-			config: { documentClient, tableNamePrefix: "auth_" },
+			config: {
+				documentClient,
+				tableNamePrefix: "auth_",
+				indexNameResolver,
+			},
 		});
 
 		expect(name).toBe("auth_user");
@@ -47,7 +56,7 @@ describe("resolveTableName", () => {
 			resolveTableName({
 				model: "user",
 				getDefaultModelName,
-				config: { documentClient },
+				config: { documentClient, indexNameResolver },
 			}),
 		);
 

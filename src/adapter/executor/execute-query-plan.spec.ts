@@ -38,6 +38,28 @@ const indexNameResolver = (props: { model: string; field: string }) => {
 	if (props.model === "session" && props.field === "userId") {
 		return "session_userId_idx";
 	}
+	if (props.model === "session" && props.field === "token") {
+		return "session_token_idx";
+	}
+	if (props.model === "verification" && props.field === "identifier") {
+		return "verification_identifier_idx";
+	}
+	return undefined;
+};
+
+const indexKeySchemaResolver = (props: { model: string; indexName: string }) => {
+	if (props.model === "session" && props.indexName === "session_userId_idx") {
+		return { partitionKey: "userId", sortKey: "createdAt" };
+	}
+	if (props.model === "session" && props.indexName === "session_token_idx") {
+		return { partitionKey: "token", sortKey: "createdAt" };
+	}
+	if (
+		props.model === "verification" &&
+		props.indexName === "verification_identifier_idx"
+	) {
+		return { partitionKey: "identifier", sortKey: "createdAt" };
+	}
 	return undefined;
 };
 
@@ -49,6 +71,7 @@ const buildAdapterConfig = (documentClient: DynamoDBDocumentClient): DynamoDBAda
 	tableNameResolver: (model) => model,
 	scanMaxPages: 2,
 	indexNameResolver,
+	indexKeySchemaResolver,
 	transaction: false,
 });
 
@@ -148,5 +171,101 @@ describe("execute query plan", () => {
 
 		const command = sendCalls[0] as ScanCommand;
 		expect(command).toBeInstanceOf(ScanCommand);
+	});
+
+	test("sets ScanIndexForward when sortBy matches index sort key", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const identifierField = helpers.getFieldName({
+			model: "verification",
+			field: "identifier",
+		});
+		const plan = buildQueryPlan({
+			model: "verification",
+			where: [
+				{
+					field: identifierField,
+					operator: "eq",
+					value: "user@example.com",
+				},
+			],
+			select: undefined,
+			sortBy: {
+				field: "createdAt",
+				direction: "desc",
+			},
+			limit: 1,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		const command = sendCalls[0] as QueryCommand;
+		expect(command).toBeInstanceOf(QueryCommand);
+		expect(command.input.ScanIndexForward).toBe(false);
+	});
+
+	test("uses multi-query for indexed IN lookups", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const tokenField = helpers.getFieldName({
+			model: "session",
+			field: "token",
+		});
+		const plan = buildQueryPlan({
+			model: "session",
+			where: [
+				{
+					field: tokenField,
+					operator: "in",
+					value: ["token_1", "token_2"],
+				},
+			],
+			select: undefined,
+			sortBy: undefined,
+			limit: 5,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		expect(sendCalls.length).toBe(2);
+		expect(sendCalls.every((command) => command instanceof QueryCommand)).toBe(
+			true,
+		);
 	});
 });

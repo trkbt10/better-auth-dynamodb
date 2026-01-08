@@ -109,6 +109,7 @@ const fetchByQuery = async (props: {
 		where: props.where,
 		getFieldName: props.getFieldName,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
+		indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
 	});
 	if (!keyCondition) {
 		throw new DynamoDBAdapterError(

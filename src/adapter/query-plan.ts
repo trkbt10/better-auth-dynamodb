@@ -4,6 +4,7 @@
 
 export type ExecutionStrategy =
 	| { kind: "query"; key: "pk" | "gsi"; indexName?: string | undefined }
+	| { kind: "multi-query"; indexName: string; field: string }
 	| { kind: "batch-get" }
 	| { kind: "scan" };
 
@@ -50,6 +51,7 @@ export type ExecutionPlan = {
 	joinStrategies: Record<string, ExecutionStrategy>;
 	requiresClientFilter: boolean;
 	requiresClientSort: boolean;
+	serverSort?: { field: string; direction: "asc" | "desc" } | undefined;
 	fetchLimit?: number | undefined;
 };
 

@@ -20,6 +20,7 @@ export type DynamoDBQueryOptions = {
 	expressionAttributeNames: Record<string, string>;
 	expressionAttributeValues: Record<string, NativeAttributeValue>;
 	limit?: number | undefined;
+	scanIndexForward?: boolean | undefined;
 };
 
 export const queryItems = async (
@@ -55,6 +56,9 @@ export const queryItems = async (
 
 			if (remaining !== undefined) {
 				commandInput.Limit = remaining;
+			}
+			if (options.scanIndexForward !== undefined) {
+				commandInput.ScanIndexForward = options.scanIndexForward;
 			}
 
 			const result = await options.documentClient.send(

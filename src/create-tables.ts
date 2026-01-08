@@ -9,7 +9,10 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import type { TableSchema } from "./table-schema";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-type WaiterConfiguration = Parameters<typeof waitUntilTableExists>[0];
+type WaiterConfiguration = Omit<
+  Parameters<typeof waitUntilTableExists>[0],
+  "client"
+>;
 type CreateTablesOptions = {
   client: DynamoDBClient;
   tables: TableSchema[];

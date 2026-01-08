@@ -66,6 +66,47 @@ describe("buildKeyCondition", () => {
 		});
 	});
 
+	test("includes sort key when schema and where allow it", () => {
+		const where: DynamoDBWhere[] = [
+			{ field: "providerId", operator: "eq", value: "github" },
+			{ field: "accountId", operator: "eq", value: "account_1" },
+		];
+		const result = buildKeyCondition({
+			model: "account",
+			where,
+			getFieldName,
+			indexNameResolver: (props) => {
+				if (props.model === "account" && props.field === "providerId") {
+					return "account_providerId_accountId_idx";
+				}
+				return undefined;
+			},
+			indexKeySchemaResolver: (props) => {
+				if (
+					props.model === "account" &&
+					props.indexName === "account_providerId_accountId_idx"
+				) {
+					return { partitionKey: "providerId", sortKey: "accountId" };
+				}
+				return undefined;
+			},
+		});
+
+		expect(result).toEqual({
+			keyConditionExpression: "#pk = :pk AND #sk = :sk",
+			expressionAttributeNames: {
+				"#pk": "providerId",
+				"#sk": "accountId",
+			},
+			expressionAttributeValues: {
+				":pk": "github",
+				":sk": "account_1",
+			},
+			indexName: "account_providerId_accountId_idx",
+			remainingWhere: [],
+		});
+	});
+
 	test("skips key condition when OR connector is present", () => {
 		const where: DynamoDBWhere[] = [
 			{ field: "id", operator: "eq", value: "user-1" },

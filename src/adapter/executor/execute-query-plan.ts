@@ -29,6 +29,26 @@ const resolveRequiresClientFilter = (props: {
 	return props.requiresClientFilter;
 };
 
+const resolveScanIndexForward = (props: {
+	serverSort?: AdapterQueryPlan["execution"]["serverSort"] | undefined;
+}): boolean | undefined => {
+	if (!props.serverSort) {
+		return undefined;
+	}
+	return props.serverSort.direction === "asc";
+};
+
+const resolveSortedItems = <T extends Record<string, unknown>>(props: {
+	items: T[];
+	serverSort?: AdapterQueryPlan["execution"]["serverSort"] | undefined;
+	sort?: AdapterQueryPlan["base"]["sort"] | undefined;
+}): T[] => {
+	if (props.serverSort) {
+		return props.items;
+	}
+	return applySort(props.items, { sortBy: props.sort });
+};
+
 const resolveScanMaxPages = (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 }): number => {
@@ -100,12 +120,74 @@ const fetchBaseItems = async (props: {
 		});
 	}
 
+	if (strategy.kind === "multi-query") {
+		const inEntry = props.plan.base.where.find(
+			(entry) => entry.field === strategy.field && entry.operator === "in",
+		);
+		if (!inEntry) {
+			return [];
+		}
+		if (!Array.isArray(inEntry.value)) {
+			return [];
+		}
+		const values = inEntry.value as NativeAttributeValue[];
+		const perQueryLimit = props.plan.execution.fetchLimit;
+		const baseModel = props.plan.base.model;
+		const results = await Promise.all(
+			values.map(async (value) => {
+				const queryWhere: DynamoDBWhere[] = where.map((entry) => {
+					if (entry.field === strategy.field && entry.operator === "in") {
+						return {
+							...entry,
+							operator: "eq",
+							value,
+						} as DynamoDBWhere;
+					}
+					return entry;
+				});
+				const keyCondition = buildKeyCondition({
+					model: baseModel,
+					where: queryWhere,
+					getFieldName: props.getFieldName,
+					indexNameResolver: props.adapterConfig.indexNameResolver,
+					indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
+				});
+				if (!keyCondition) {
+					return [];
+				}
+				const filter = buildFilterExpression({
+					model: baseModel,
+					where: keyCondition.remainingWhere,
+					getFieldName: props.getFieldName,
+				});
+				return (await queryItems({
+					documentClient: props.documentClient,
+					tableName,
+					indexName: keyCondition.indexName ?? strategy.indexName,
+					keyConditionExpression: keyCondition.keyConditionExpression,
+					filterExpression: filter.filterExpression,
+					expressionAttributeNames: {
+						...keyCondition.expressionAttributeNames,
+						...filter.expressionAttributeNames,
+					},
+					expressionAttributeValues: {
+						...keyCondition.expressionAttributeValues,
+						...filter.expressionAttributeValues,
+					},
+					limit: perQueryLimit,
+				})) as DynamoDBItem[];
+			}),
+		);
+		return results.flat();
+	}
+
 	if (strategy.kind === "query") {
 		const keyCondition = buildKeyCondition({
 			model: props.plan.base.model,
 			where,
 			getFieldName: props.getFieldName,
 			indexNameResolver: props.adapterConfig.indexNameResolver,
+			indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
 		});
 		if (!keyCondition) {
 			throw new DynamoDBAdapterError(
@@ -120,6 +202,9 @@ const fetchBaseItems = async (props: {
 		});
 		const indexName =
 			strategy.key === "gsi" ? strategy.indexName : keyCondition.indexName;
+		const scanIndexForward = resolveScanIndexForward({
+			serverSort: props.plan.execution.serverSort,
+		});
 		return (await queryItems({
 			documentClient: props.documentClient,
 			tableName,
@@ -135,6 +220,7 @@ const fetchBaseItems = async (props: {
 				...filter.expressionAttributeValues,
 			},
 			limit: props.plan.execution.fetchLimit,
+			scanIndexForward,
 		})) as DynamoDBItem[];
 	}
 
@@ -198,8 +284,10 @@ export const createQueryPlanExecutor = (props: {
 			requiresClientFilter,
 		});
 
-		const sortedItems = applySort(filteredItems, {
-			sortBy: plan.base.sort,
+		const sortedItems = resolveSortedItems({
+			items: filteredItems,
+			serverSort: plan.execution.serverSort,
+			sort: plan.base.sort,
 		});
 
 		const limitedItems = applyOffsetLimit({
