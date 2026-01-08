@@ -102,6 +102,164 @@ const tables = multiTableSchemas.map((schema) => ({
 await createTables({ client, tables });
 ```
 
+### Using AWS CDK
+
+For production deployments, you can create the tables using AWS CDK. The table schemas are based on `multiTableSchemas` in `src/table-schema.ts`.
+
+```ts
+import * as cdk from "aws-cdk-lib";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import { Construct } from "constructs";
+
+export class BetterAuthTablesStack extends cdk.Stack {
+  public readonly userTable: dynamodb.Table;
+  public readonly sessionTable: dynamodb.Table;
+  public readonly accountTable: dynamodb.Table;
+  public readonly verificationTable: dynamodb.Table;
+
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    const tablePrefix = "better_auth_";
+
+    // User table
+    this.userTable = new dynamodb.Table(this, "UserTable", {
+      tableName: `${tablePrefix}user`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Session table
+    this.sessionTable = new dynamodb.Table(this, "SessionTable", {
+      tableName: `${tablePrefix}session`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.sessionTable.addGlobalSecondaryIndex({
+      indexName: "session_userId_idx",
+      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    this.sessionTable.addGlobalSecondaryIndex({
+      indexName: "session_token_idx",
+      partitionKey: { name: "token", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Account table
+    this.accountTable = new dynamodb.Table(this, "AccountTable", {
+      tableName: `${tablePrefix}account`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.accountTable.addGlobalSecondaryIndex({
+      indexName: "account_userId_idx",
+      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    this.accountTable.addGlobalSecondaryIndex({
+      indexName: "account_providerId_accountId_idx",
+      partitionKey: { name: "providerId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Verification table
+    this.verificationTable = new dynamodb.Table(this, "VerificationTable", {
+      tableName: `${tablePrefix}verification`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.verificationTable.addGlobalSecondaryIndex({
+      indexName: "verification_identifier_idx",
+      partitionKey: { name: "identifier", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+  }
+}
+```
+
+### IAM Permissions
+
+The application (Lambda, ECS, EC2, etc.) requires the following IAM permissions to access the Better Auth tables:
+
+```ts
+import * as iam from "aws-cdk-lib/aws-iam";
+
+// Minimal policy for Better Auth DynamoDB operations
+const betterAuthDynamoDBPolicy = new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    "dynamodb:GetItem",
+    "dynamodb:PutItem",
+    "dynamodb:UpdateItem",
+    "dynamodb:DeleteItem",
+    "dynamodb:Query",
+    "dynamodb:Scan",
+    "dynamodb:BatchGetItem",
+    "dynamodb:BatchWriteItem",
+  ],
+  resources: [
+    userTable.tableArn,
+    sessionTable.tableArn,
+    accountTable.tableArn,
+    verificationTable.tableArn,
+    // Include GSI ARNs
+    `${sessionTable.tableArn}/index/*`,
+    `${accountTable.tableArn}/index/*`,
+    `${verificationTable.tableArn}/index/*`,
+  ],
+});
+
+// If using transactions (transaction: true in adapter config)
+const transactionPolicy = new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ["dynamodb:TransactWriteItems"],
+  resources: [
+    userTable.tableArn,
+    sessionTable.tableArn,
+    accountTable.tableArn,
+    verificationTable.tableArn,
+  ],
+});
+
+// Example: Attach to Lambda function
+lambdaFunction.addToRolePolicy(betterAuthDynamoDBPolicy);
+lambdaFunction.addToRolePolicy(transactionPolicy);
+
+// Or use the built-in grant methods
+userTable.grantReadWriteData(lambdaFunction);
+sessionTable.grantReadWriteData(lambdaFunction);
+accountTable.grantReadWriteData(lambdaFunction);
+verificationTable.grantReadWriteData(lambdaFunction);
+```
+
+#### Required IAM Actions Summary
+
+| Action | Purpose |
+|--------|---------|
+| `dynamodb:GetItem` | Fetch single items by primary key |
+| `dynamodb:PutItem` | Create new items |
+| `dynamodb:UpdateItem` | Update existing items |
+| `dynamodb:DeleteItem` | Delete items |
+| `dynamodb:Query` | Query tables and GSIs |
+| `dynamodb:Scan` | Scan tables (when index not available) |
+| `dynamodb:BatchGetItem` | Batch read operations |
+| `dynamodb:BatchWriteItem` | Batch write operations |
+| `dynamodb:TransactWriteItems` | Transactional writes (if `transaction: true`) |
+
 This creates four tables with optimized GSI configurations:
 
 | Table | Primary Key | Global Secondary Indexes |
