@@ -19,7 +19,7 @@ import rulesNoMocks from "./eslint/rules/rules-no-mocks.js";
 export default [
   // Ignore patterns
   {
-    ignores: ["node_modules/**", "dist/**", "build/**", "debug/**", "*.config.ts", "eslint/**"],
+    ignores: ["node_modules/**", "dist/**", "build/**", "debug/**", "coverage/**", "*.config.ts", "eslint/**"],
   },
 
   // JS/TS recommended sets (Flat-compatible)
