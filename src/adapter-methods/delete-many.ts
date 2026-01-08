@@ -25,9 +25,6 @@ export type DeleteMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 	transactionState?: DynamoDBTransactionState | undefined;
 };
 
@@ -40,7 +37,6 @@ export const createDeleteExecutor = (
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
-		getFieldAttributes,
 		transactionState,
 	} = options;
 	const executePlan = createQueryPlanExecutor({
@@ -48,7 +44,6 @@ export const createDeleteExecutor = (
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
-		getFieldAttributes,
 	});
 	const resolveModelTableName = (model: string) =>
 		resolveTableName({
@@ -70,7 +65,6 @@ export const createDeleteExecutor = (
 			offset: undefined,
 			join: undefined,
 			getFieldName,
-			getFieldAttributes,
 			adapterConfig,
 		});
 		const filteredItems = await executePlan(plan);

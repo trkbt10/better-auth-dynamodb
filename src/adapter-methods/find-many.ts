@@ -20,9 +20,6 @@ export type FindManyOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 };
 
 export const createFindManyExecutor = (
@@ -34,14 +31,12 @@ export const createFindManyExecutor = (
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
-		getFieldAttributes,
 	} = options;
 	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
-		getFieldAttributes,
 	});
 
 	return async ({
@@ -61,7 +56,6 @@ export const createFindManyExecutor = (
 			offset,
 			join,
 			getFieldName,
-			getFieldAttributes,
 			adapterConfig,
 		});
 

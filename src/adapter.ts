@@ -37,7 +37,7 @@ export type DynamoDBAdapterConfig = {
   tableNamePrefix?: string | undefined;
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
-  indexNameResolver?: ((props: { model: string; field: string }) => string | undefined) | undefined;
+  indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   transaction?: boolean | undefined;
 };
 
@@ -48,7 +48,7 @@ export type ResolvedDynamoDBAdapterConfig = {
   tableNamePrefix?: string | undefined;
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
-  indexNameResolver?: ((props: { model: string; field: string }) => string | undefined) | undefined;
+  indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   transaction: boolean;
 };
 
@@ -66,13 +66,12 @@ const createDynamoDbCustomizer = (props: {
 }): AdapterFactoryCustomizeAdapterCreator => {
   const { documentClient, adapterConfig, transactionState } = props;
 
-  return ({ getFieldName, getDefaultModelName, getFieldAttributes }) => {
+  return ({ getFieldName, getDefaultModelName }) => {
     const adapterClient: AdapterClientContainer = { documentClient };
     const sharedOptions: FindManyOptions = {
       adapterConfig,
       getFieldName,
       getDefaultModelName,
-      getFieldAttributes,
     };
     const countOptions: CountMethodOptions = sharedOptions;
     const updateOptions: UpdateMethodOptions = {
@@ -103,6 +102,12 @@ const createDynamoDbCustomizer = (props: {
 };
 
 export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
+  if (!config.indexNameResolver) {
+    throw new DynamoDBAdapterError(
+      "MISSING_INDEX_RESOLVER",
+      "DynamoDB adapter requires indexNameResolver.",
+    );
+  }
   const resolvedConfig: ResolvedDynamoDBAdapterConfig = {
     documentClient: config.documentClient,
     debugLogs: config.debugLogs,

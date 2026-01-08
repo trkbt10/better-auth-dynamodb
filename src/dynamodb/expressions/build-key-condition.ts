@@ -9,12 +9,7 @@ export const buildKeyCondition = (props: {
 	model: string;
 	where: DynamoDBWhere[] | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
-	indexNameResolver:
-		| ((args: { model: string; field: string }) => string | undefined)
-		| undefined;
+	indexNameResolver: (args: { model: string; field: string }) => string | undefined;
 }): {
 	keyConditionExpression: string;
 	expressionAttributeNames: Record<string, string>;
@@ -22,8 +17,7 @@ export const buildKeyCondition = (props: {
 	indexName?: string | undefined;
 	remainingWhere: DynamoDBWhere[];
 } | null => {
-	const { model, where, getFieldName, getFieldAttributes, indexNameResolver } =
-		props;
+	const { model, where, getFieldName, indexNameResolver } = props;
 	if (!where || where.length === 0) {
 		return null;
 	}
@@ -60,15 +54,8 @@ export const buildKeyCondition = (props: {
 		};
 	}
 
-	if (!indexNameResolver) {
-		return null;
-	}
-
 	const indexEntry = normalizedEntries.find(({ operator, fieldName, entry }) => {
 		if (operator !== "eq") {
-			return false;
-		}
-		if (!getFieldAttributes({ model, field: entry.field }).index) {
 			return false;
 		}
 		const indexName = indexNameResolver({ model, field: entry.field });

@@ -71,9 +71,6 @@ const fetchBaseItems = async (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 }): Promise<DynamoDBItem[]> => {
 	const where = toDynamoWhere(props.plan.base.where);
 	const tableName = resolveTableName({
@@ -108,7 +105,6 @@ const fetchBaseItems = async (props: {
 			model: props.plan.base.model,
 			where,
 			getFieldName: props.getFieldName,
-			getFieldAttributes: props.getFieldAttributes,
 			indexNameResolver: props.adapterConfig.indexNameResolver,
 		});
 		if (!keyCondition) {
@@ -176,9 +172,6 @@ export const createQueryPlanExecutor = (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 }) => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -193,7 +186,6 @@ export const createQueryPlanExecutor = (props: {
 			adapterConfig: props.adapterConfig,
 			getFieldName: props.getFieldName,
 			getDefaultModelName: props.getDefaultModelName,
-			getFieldAttributes: props.getFieldAttributes,
 		});
 
 		const requiresClientFilter = resolveRequiresClientFilter({
@@ -226,7 +218,6 @@ export const createQueryPlanExecutor = (props: {
 					adapterConfig: props.adapterConfig,
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
-					getFieldAttributes: props.getFieldAttributes,
 				});
 			},
 			Promise.resolve(limitedItems),

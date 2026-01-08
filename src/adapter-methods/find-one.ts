@@ -18,7 +18,6 @@ export const createFindOneMethod = (
 		adapterConfig: options.adapterConfig,
 		getFieldName: options.getFieldName,
 		getDefaultModelName: options.getDefaultModelName,
-		getFieldAttributes: options.getFieldAttributes,
 	});
 
 	return async <T>({
@@ -41,7 +40,6 @@ export const createFindOneMethod = (
 			offset: 0,
 			join,
 			getFieldName: options.getFieldName,
-			getFieldAttributes: options.getFieldAttributes,
 			adapterConfig: options.adapterConfig,
 		});
 		const filteredItems = await executePlan(plan);

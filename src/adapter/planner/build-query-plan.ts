@@ -114,9 +114,6 @@ export const buildQueryPlan = (props: {
 	offset?: number | undefined;
 	join?: JoinConfig | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 }): AdapterQueryPlan => {
 	if (!props) {
@@ -129,7 +126,6 @@ export const buildQueryPlan = (props: {
 	const joins = resolveJoinPlan({
 		join: props.join,
 		getFieldName: props.getFieldName,
-		getFieldAttributes: props.getFieldAttributes,
 		adapterConfig: props.adapterConfig,
 	});
 	const normalizedSelect = resolveNormalizedSelect({
@@ -146,7 +142,6 @@ export const buildQueryPlan = (props: {
 		model: props.model,
 		where: normalizedWhere,
 		getFieldName: props.getFieldName,
-		getFieldAttributes: props.getFieldAttributes,
 		adapterConfig: props.adapterConfig,
 		hasOrConnector: constraints.hasOrConnector,
 	});

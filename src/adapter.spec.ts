@@ -12,6 +12,7 @@ import { createDocumentClientStub } from "../spec/dynamodb-document-client";
 import { dynamodbAdapter } from "./adapter";
 
 describe("dynamodbAdapter", () => {
+	const indexNameResolver = () => undefined;
 	const captureAsyncError = async (fn: () => Promise<void>): Promise<unknown> => {
 		try {
 			await fn();
@@ -29,6 +30,7 @@ describe("dynamodbAdapter", () => {
 			documentClient,
 			tableNamePrefix: "auth_",
 			transaction: true,
+			indexNameResolver,
 		});
 		const adapter = adapterFactory({});
 
@@ -45,6 +47,49 @@ describe("dynamodbAdapter", () => {
 		expect(sendCalls[0]).toBeInstanceOf(TransactWriteCommand);
 	});
 
+	test("includes update and delete in transaction", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return {
+						Items: [{ id: "user_1", name: "user" }],
+						LastEvaluatedKey: undefined,
+					};
+				}
+				return {};
+			},
+		});
+		const adapterFactory = dynamodbAdapter({
+			documentClient,
+			tableNamePrefix: "auth_",
+			transaction: true,
+			indexNameResolver,
+		});
+		const adapter = adapterFactory({});
+
+		await adapter.transaction(async (tx) => {
+			await tx.update({
+				model: "user",
+				where: [{ field: "id", value: "user_1" }],
+				update: { name: "updated" },
+			});
+			await tx.delete({
+				model: "user",
+				where: [{ field: "id", value: "user_1" }],
+			});
+		});
+
+		expect(sendCalls.length).toBeGreaterThan(0);
+		const transactionCommand = sendCalls.find(
+			(command): command is TransactWriteCommand =>
+				command instanceof TransactWriteCommand,
+		);
+		if (!transactionCommand) {
+			throw new Error("Expected a TransactWriteCommand to be sent.");
+		}
+		expect(transactionCommand.input.TransactItems?.length).toBe(2);
+	});
+
 	test("creates items with PutCommand", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async () => ({}),
@@ -53,6 +98,7 @@ describe("dynamodbAdapter", () => {
 			documentClient,
 			tableNamePrefix: "auth_",
 			scanMaxPages: 1,
+			indexNameResolver,
 		});
 		const adapter = adapterFactory({});
 
@@ -78,6 +124,7 @@ describe("dynamodbAdapter", () => {
 			documentClient,
 			tableNamePrefix: "auth_",
 			transaction: true,
+			indexNameResolver,
 		});
 		const adapter = adapterFactory({});
 		const error = await captureAsyncError(async () => {
@@ -108,6 +155,7 @@ describe("dynamodbAdapter", () => {
 			documentClient,
 			tableNamePrefix: "auth_",
 			scanMaxPages: 1,
+			indexNameResolver,
 		});
 		const adapter = adapterFactory({});
 		const where: Where[] = [
@@ -134,6 +182,7 @@ describe("dynamodbAdapter", () => {
 			documentClient,
 			tableNamePrefix: "auth_",
 			scanMaxPages: 1,
+			indexNameResolver,
 		});
 		const adapter = adapterFactory({});
 		const where: Where[] = [

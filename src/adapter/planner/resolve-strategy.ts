@@ -22,26 +22,10 @@ const resolvePkEntry = (props: {
 const resolveGsiEntry = (props: {
 	where: NormalizedWhere[];
 	model: string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
-	indexNameResolver:
-		| ((args: { model: string; field: string }) => string | undefined)
-		| undefined;
+	indexNameResolver: (args: { model: string; field: string }) => string | undefined;
 }): { entry: NormalizedWhere; indexName: string } | undefined => {
-	if (!props.indexNameResolver) {
-		return undefined;
-	}
-
 	for (const entry of props.where) {
 		if (entry.operator !== "eq") {
-			continue;
-		}
-		const fieldAttributes = props.getFieldAttributes({
-			model: props.model,
-			field: entry.field,
-		});
-		if (!fieldAttributes.index) {
 			continue;
 		}
 		const indexName = props.indexNameResolver({
@@ -61,9 +45,6 @@ export const resolveBaseStrategy = (props: {
 	model: string;
 	where: NormalizedWhere[];
 	getFieldName: (args: { model: string; field: string }) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 	hasOrConnector: boolean;
 }): ExecutionStrategy => {
@@ -93,7 +74,6 @@ export const resolveBaseStrategy = (props: {
 	const gsiEntry = resolveGsiEntry({
 		where: props.where,
 		model: props.model,
-		getFieldAttributes: props.getFieldAttributes,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
 	});
 	if (gsiEntry) {
@@ -116,9 +96,6 @@ export const resolveJoinStrategyHint = (props: {
 	joinField: string;
 	model: string;
 	getFieldName: (args: { model: string; field: string }) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 }): ExecutionStrategy => {
 	if (!props) {
@@ -135,18 +112,12 @@ export const resolveJoinStrategyHint = (props: {
 		return { kind: "query", key: "pk" };
 	}
 
-	const fieldAttributes = props.getFieldAttributes({
+	const indexName = props.adapterConfig.indexNameResolver({
 		model: props.model,
 		field: props.joinField,
 	});
-	if (fieldAttributes.index && props.adapterConfig.indexNameResolver) {
-		const indexName = props.adapterConfig.indexNameResolver({
-			model: props.model,
-			field: props.joinField,
-		});
-		if (indexName) {
-			return { kind: "query", key: "gsi", indexName };
-		}
+	if (indexName) {
+		return { kind: "query", key: "gsi", indexName };
 	}
 
 	return { kind: "scan" };
@@ -157,9 +128,6 @@ export const resolveJoinStrategy = (props: {
 	model: string;
 	baseValues: unknown[];
 	getFieldName: (args: { model: string; field: string }) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 }): ExecutionStrategy => {
 	if (!props) {
@@ -172,7 +140,6 @@ export const resolveJoinStrategy = (props: {
 		joinField: props.joinField,
 		model: props.model,
 		getFieldName: props.getFieldName,
-		getFieldAttributes: props.getFieldAttributes,
 		adapterConfig: props.adapterConfig,
 	});
 

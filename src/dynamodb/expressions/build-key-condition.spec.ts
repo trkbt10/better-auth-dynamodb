@@ -6,13 +6,11 @@ import { buildKeyCondition } from "./build-key-condition";
 
 describe("buildKeyCondition", () => {
 	const getFieldName = (props: { model: string; field: string }) => props.field;
-	const getFieldAttributes = (props: { model: string; field: string }) => ({
-		index: props.field === "email",
-	});
 	const indexNameResolver = (props: { model: string; field: string }) =>
 		`${props.model}_${props.field}_index`;
+	const indexNameResolverNone = () => undefined;
 
-	test("returns null for non-primary key", () => {
+	test("returns null when index name resolver has no match", () => {
 		const where: DynamoDBWhere[] = [
 			{ field: "email", operator: "eq", value: "a@example.com" },
 		];
@@ -20,8 +18,7 @@ describe("buildKeyCondition", () => {
 			model: "user",
 			where,
 			getFieldName,
-			getFieldAttributes: () => ({ index: false }),
-			indexNameResolver,
+			indexNameResolver: indexNameResolverNone,
 		});
 
 		expect(result).toBeNull();
@@ -36,7 +33,6 @@ describe("buildKeyCondition", () => {
 			model: "user",
 			where,
 			getFieldName,
-			getFieldAttributes,
 			indexNameResolver,
 		});
 
@@ -58,7 +54,6 @@ describe("buildKeyCondition", () => {
 			model: "user",
 			where,
 			getFieldName,
-			getFieldAttributes,
 			indexNameResolver,
 		});
 
@@ -85,7 +80,6 @@ describe("buildKeyCondition", () => {
 			model: "user",
 			where,
 			getFieldName,
-			getFieldAttributes,
 			indexNameResolver,
 		});
 

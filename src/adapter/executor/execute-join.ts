@@ -98,9 +98,6 @@ const fetchByQuery = async (props: {
 	limit?: number | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 }): Promise<DynamoDBItem[]> => {
 	const tableName = resolveTableName({
 		model: props.model,
@@ -111,7 +108,6 @@ const fetchByQuery = async (props: {
 		model: props.model,
 		where: props.where,
 		getFieldName: props.getFieldName,
-		getFieldAttributes: props.getFieldAttributes,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
 	});
 	if (!keyCondition) {
@@ -181,9 +177,6 @@ export const executeJoin = async (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 }): Promise<DynamoDBItem[]> => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -207,7 +200,6 @@ export const executeJoin = async (props: {
 		model: props.join.model,
 		baseValues,
 		getFieldName: props.getFieldName,
-		getFieldAttributes: props.getFieldAttributes,
 		adapterConfig: props.adapterConfig,
 	});
 	const joinLimit = resolveJoinLimit({
@@ -245,7 +237,6 @@ export const executeJoin = async (props: {
 					limit: joinLimit,
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
-					getFieldAttributes: props.getFieldAttributes,
 				});
 				return [...acc, ...items];
 			}, initial);

@@ -17,9 +17,6 @@ export type CountMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
-	getFieldAttributes: (args: { model: string; field: string }) => {
-		index?: boolean | undefined;
-	};
 };
 
 export const createCountMethod = (
@@ -27,8 +24,7 @@ export const createCountMethod = (
 	options: CountMethodOptions,
 ) => {
 	const { documentClient } = client;
-	const { adapterConfig, getFieldName, getDefaultModelName, getFieldAttributes } =
-		options;
+	const { adapterConfig, getFieldName, getDefaultModelName } = options;
 
 	const resolveScanMaxPages = (): number => {
 		if (adapterConfig.scanMaxPages === undefined) {
@@ -56,7 +52,6 @@ export const createCountMethod = (
 			offset: undefined,
 			join: undefined,
 			getFieldName,
-			getFieldAttributes,
 			adapterConfig,
 		});
 
@@ -66,7 +61,6 @@ export const createCountMethod = (
 				adapterConfig,
 				getFieldName,
 				getDefaultModelName,
-				getFieldAttributes,
 			});
 			const items = await executePlan(plan);
 			return items.length;
@@ -78,7 +72,6 @@ export const createCountMethod = (
 				adapterConfig,
 				getFieldName,
 				getDefaultModelName,
-				getFieldAttributes,
 			});
 			const items = await executePlan(plan);
 			return items.length;
@@ -102,7 +95,6 @@ export const createCountMethod = (
 				model,
 				where: whereFilters,
 				getFieldName,
-				getFieldAttributes,
 				indexNameResolver: adapterConfig.indexNameResolver,
 			});
 			if (!keyCondition) {
