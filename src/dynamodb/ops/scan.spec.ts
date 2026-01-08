@@ -94,4 +94,67 @@ describe("scanCount", () => {
 
 		expect(count).toBe(3);
 	});
+
+	test("throws error when exceeding maxPages", async () => {
+		const { documentClient } = createDocumentClientStub({
+			respond: async () => ({
+				Count: 10,
+				LastEvaluatedKey: { id: "next" },
+			}),
+		});
+
+		await expect(
+			scanCount({
+				documentClient,
+				tableName: "users",
+				filterExpression: undefined,
+				expressionAttributeNames: {},
+				expressionAttributeValues: {},
+				maxPages: 2,
+			}),
+		).rejects.toThrow("Scan exceeded the configured page limit.");
+	});
+});
+
+describe("scanItems maxPages", () => {
+	test("throws error when exceeding maxPages", async () => {
+		const { documentClient } = createDocumentClientStub({
+			respond: async () => ({
+				Items: [{ id: "1" }],
+				LastEvaluatedKey: { id: "next" },
+			}),
+		});
+
+		await expect(
+			scanItems({
+				documentClient,
+				tableName: "users",
+				filterExpression: undefined,
+				expressionAttributeNames: {},
+				expressionAttributeValues: {},
+				maxPages: 2,
+			}),
+		).rejects.toThrow("Scan exceeded the configured page limit.");
+	});
+
+	test("stops early when limit is reached", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({
+				Items: [{ id: "1" }, { id: "2" }],
+				LastEvaluatedKey: { id: "2" },
+			}),
+		});
+
+		const items = await scanItems({
+			documentClient,
+			tableName: "users",
+			filterExpression: undefined,
+			expressionAttributeNames: {},
+			expressionAttributeValues: {},
+			limit: 2,
+		});
+
+		expect(items.length).toBe(2);
+		expect(sendCalls.length).toBe(1);
+	});
 });

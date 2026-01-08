@@ -283,4 +283,180 @@ describe("executeJoin", () => {
 		expect(Array.isArray(joined)).toBe(false);
 		expect(joined).toMatchObject({ userId: "user_1" });
 	});
+
+	test("returns empty join value for items with no matching base values", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({}),
+		});
+		const adapterConfig: DynamoDBAdapterConfig = {
+			documentClient,
+			usePlural: false,
+			debugLogs: undefined,
+			tableNamePrefix: "",
+			tableNameResolver: (model) => model,
+			scanMaxPages: 2,
+			indexNameResolver,
+			transaction: false,
+		};
+		const userIdField = helpers.getFieldName({
+			model: "session",
+			field: "userId",
+		});
+		const joinPlan: JoinPlan = {
+			modelKey: "session",
+			model: "session",
+			relation: "one-to-many",
+			on: { from: "id", to: userIdField },
+			limit: 10,
+			select: undefined,
+			strategy: { kind: "query", key: "gsi", indexName: "session_userId_idx" },
+		};
+
+		const result = await executeJoin({
+			baseItems: [{ name: "no-id" }],
+			join: joinPlan,
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		expect(result[0].session).toEqual([]);
+		expect(sendCalls.length).toBe(0);
+	});
+
+	test("returns null for one-to-one joins with no matching base values", async () => {
+		const { documentClient } = createDocumentClientStub({
+			respond: async () => ({}),
+		});
+		const adapterConfig: DynamoDBAdapterConfig = {
+			documentClient,
+			usePlural: false,
+			debugLogs: undefined,
+			tableNamePrefix: "",
+			tableNameResolver: (model) => model,
+			scanMaxPages: 2,
+			indexNameResolver,
+			transaction: false,
+		};
+		const userIdField = helpers.getFieldName({
+			model: "session",
+			field: "userId",
+		});
+		const joinPlan: JoinPlan = {
+			modelKey: "session",
+			model: "session",
+			relation: "one-to-one",
+			on: { from: "id", to: userIdField },
+			limit: 10,
+			select: undefined,
+			strategy: { kind: "query", key: "gsi", indexName: "session_userId_idx" },
+		};
+
+		const result = await executeJoin({
+			baseItems: [{ name: "no-id" }],
+			join: joinPlan,
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		expect(result[0].session).toBeNull();
+	});
+
+	test("returns null for one-to-one joins with no matches", async () => {
+		const { documentClient } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig: DynamoDBAdapterConfig = {
+			documentClient,
+			usePlural: false,
+			debugLogs: undefined,
+			tableNamePrefix: "",
+			tableNameResolver: (model) => model,
+			scanMaxPages: 2,
+			indexNameResolver,
+			transaction: false,
+		};
+		const userIdField = helpers.getFieldName({
+			model: "session",
+			field: "userId",
+		});
+		const joinPlan: JoinPlan = {
+			modelKey: "session",
+			model: "session",
+			relation: "one-to-one",
+			on: { from: "id", to: userIdField },
+			limit: 10,
+			select: undefined,
+			strategy: { kind: "query", key: "gsi", indexName: "session_userId_idx" },
+		};
+
+		const result = await executeJoin({
+			baseItems: [{ id: "user_1" }],
+			join: joinPlan,
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		expect(result[0].session).toBeNull();
+	});
+
+	test("handles scan with multiple base values (no limit)", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof ScanCommand) {
+					return {
+						Items: [
+							{ userAgent: "user_1", id: "s1" },
+							{ userAgent: "user_2", id: "s2" },
+						],
+						LastEvaluatedKey: undefined,
+					};
+				}
+				return {};
+			},
+		});
+		const adapterConfig: DynamoDBAdapterConfig = {
+			documentClient,
+			usePlural: false,
+			debugLogs: undefined,
+			tableNamePrefix: "",
+			tableNameResolver: (model) => model,
+			scanMaxPages: 2,
+			indexNameResolver,
+			transaction: false,
+		};
+		const joinPlan: JoinPlan = {
+			modelKey: "session",
+			model: "session",
+			relation: "one-to-many",
+			on: { from: "id", to: "userAgent" },
+			limit: undefined,
+			select: undefined,
+			strategy: { kind: "scan" },
+		};
+
+		const result = await executeJoin({
+			baseItems: [{ id: "user_1" }, { id: "user_2" }],
+			join: joinPlan,
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		expect(result.length).toBe(2);
+		expect(sendCalls.length).toBe(1);
+		const command = sendCalls[0] as ScanCommand;
+		expect(command.input.Limit).toBeUndefined();
+	});
 });
