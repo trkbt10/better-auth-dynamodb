@@ -2,7 +2,7 @@
  * @file Resolve execution strategies for adapter query plans.
  */
 import type { NormalizedWhere, ExecutionStrategy } from "../query-plan";
-import type { DynamoDBAdapterConfig } from "../../adapter-config";
+import type { DynamoDBAdapterConfig } from "../../adapter";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 
 const resolvePrimaryKeyName = (props: {

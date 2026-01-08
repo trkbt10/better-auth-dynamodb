@@ -2,7 +2,7 @@
  * @file Find-many method for the DynamoDB adapter.
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
-import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";

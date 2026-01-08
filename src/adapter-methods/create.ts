@@ -3,7 +3,7 @@
  */
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import type { AdapterClientContainer } from "./client-container";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import {

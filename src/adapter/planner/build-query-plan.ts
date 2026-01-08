@@ -2,7 +2,7 @@
  * @file Build adapter query plan from Better Auth inputs.
  */
 import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
-import type { DynamoDBAdapterConfig } from "../../adapter-config";
+import type { DynamoDBAdapterConfig } from "../../adapter";
 import type {
 	AdapterQueryPlan,
 	ExecutionPlan,

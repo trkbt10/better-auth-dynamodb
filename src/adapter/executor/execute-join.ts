@@ -3,7 +3,7 @@
  */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import type { DynamoDBAdapterConfig } from "../../adapter-config";
+import type { DynamoDBAdapterConfig } from "../../adapter";
 import type { JoinPlan } from "../query-plan";
 import type { DynamoDBItem } from "./where-evaluator";
 import { resolveJoinStrategy } from "../planner/resolve-strategy";

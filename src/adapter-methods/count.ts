@@ -2,7 +2,7 @@
  * @file Count method for the DynamoDB adapter.
  */
 import type { Where } from "@better-auth/core/db/adapter";
-import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import { buildKeyCondition } from "../dynamodb/expressions/build-key-condition";

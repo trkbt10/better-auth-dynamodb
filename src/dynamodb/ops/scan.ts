@@ -8,6 +8,7 @@ import type {
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { applyExpressionAttributes } from "./apply-expression-attributes";
+import { paginate } from "./paginate";
 import { resolveRemainingLimit } from "./resolve-remaining-limit";
 import { DynamoDBAdapterError } from "../errors/errors";
 
@@ -25,65 +26,54 @@ export const scanItems = async (
 	options: DynamoDBScanOptions,
 ): Promise<Record<string, NativeAttributeValue>[]> => {
 	const items: Record<string, NativeAttributeValue>[] = [];
-	const state = {
-		lastEvaluatedKey: undefined as
-			| Record<string, NativeAttributeValue>
-			| undefined,
-		pageCount: 0,
-	};
-
-	for (;;) {
-		if (
-			options.maxPages !== undefined &&
-			state.pageCount >= options.maxPages
-		) {
+	await paginate<Record<string, NativeAttributeValue>>({
+		maxPages: options.maxPages ?? Number.POSITIVE_INFINITY,
+		onMaxPages: () => {
 			throw new DynamoDBAdapterError(
 				"SCAN_PAGE_LIMIT",
 				"Scan exceeded the configured page limit.",
 			);
-		}
-		state.pageCount += 1;
+		},
+		fetchPage: async (lastEvaluatedKey) => {
+			const remaining = resolveRemainingLimit(options.limit, items.length);
 
-		const remaining = resolveRemainingLimit(options.limit, items.length);
+			if (remaining === 0) {
+				return { shouldStop: true };
+			}
 
-		if (remaining === 0) {
-			break;
-		}
+			const commandInput: ScanCommandInput = {
+				TableName: options.tableName,
+			};
 
-		const commandInput: ScanCommandInput = {
-			TableName: options.tableName,
-		};
+			applyExpressionAttributes(commandInput, {
+				filterExpression: options.filterExpression,
+				expressionAttributeNames: options.expressionAttributeNames,
+				expressionAttributeValues: options.expressionAttributeValues,
+			});
 
-		applyExpressionAttributes(commandInput, {
-			filterExpression: options.filterExpression,
-			expressionAttributeNames: options.expressionAttributeNames,
-			expressionAttributeValues: options.expressionAttributeValues,
-		});
+			if (lastEvaluatedKey) {
+				commandInput.ExclusiveStartKey = lastEvaluatedKey;
+			}
 
-		if (state.lastEvaluatedKey) {
-			commandInput.ExclusiveStartKey = state.lastEvaluatedKey;
-		}
+			if (remaining !== undefined) {
+				commandInput.Limit = remaining;
+			}
 
-		if (remaining !== undefined) {
-			commandInput.Limit = remaining;
-		}
+			const result = await options.documentClient.send(
+				new ScanCommand(commandInput),
+			);
+			const pageItems = (result.Items ?? []) as Record<string, unknown>[];
+			items.push(...pageItems);
 
-		const result = await options.documentClient.send(
-			new ScanCommand(commandInput),
-		);
-		const pageItems = (result.Items ?? []) as Record<string, unknown>[];
-		items.push(...pageItems);
+			const nextToken =
+				(result.LastEvaluatedKey as
+					| Record<string, NativeAttributeValue>
+					| undefined) ??
+				undefined;
 
-		state.lastEvaluatedKey =
-			(result.LastEvaluatedKey as
-				| Record<string, NativeAttributeValue>
-				| undefined) ??
-			undefined;
-
-		if (!state.lastEvaluatedKey) {
-			break;
-		}
-	}
+			return { nextToken };
+		},
+	});
 
 	return items;
 };
@@ -91,55 +81,45 @@ export const scanItems = async (
 export const scanCount = async (
 	options: Omit<DynamoDBScanOptions, "limit">,
 ): Promise<number> => {
-	const state = {
-		lastEvaluatedKey: undefined as
-			| Record<string, NativeAttributeValue>
-			| undefined,
-		count: 0,
-		pageCount: 0,
-	};
+	const state = { count: 0 };
 
-	for (;;) {
-		if (
-			options.maxPages !== undefined &&
-			state.pageCount >= options.maxPages
-		) {
+	await paginate<Record<string, NativeAttributeValue>>({
+		maxPages: options.maxPages ?? Number.POSITIVE_INFINITY,
+		onMaxPages: () => {
 			throw new DynamoDBAdapterError(
 				"SCAN_PAGE_LIMIT",
 				"Scan exceeded the configured page limit.",
 			);
-		}
-		state.pageCount += 1;
+		},
+		fetchPage: async (lastEvaluatedKey) => {
+			const commandInput: ScanCommandInput = {
+				TableName: options.tableName,
+				Select: "COUNT",
+			};
 
-		const commandInput: ScanCommandInput = {
-			TableName: options.tableName,
-			Select: "COUNT",
-		};
+			applyExpressionAttributes(commandInput, {
+				filterExpression: options.filterExpression,
+				expressionAttributeNames: options.expressionAttributeNames,
+				expressionAttributeValues: options.expressionAttributeValues,
+			});
 
-		applyExpressionAttributes(commandInput, {
-			filterExpression: options.filterExpression,
-			expressionAttributeNames: options.expressionAttributeNames,
-			expressionAttributeValues: options.expressionAttributeValues,
-		});
+			if (lastEvaluatedKey) {
+				commandInput.ExclusiveStartKey = lastEvaluatedKey;
+			}
 
-		if (state.lastEvaluatedKey) {
-			commandInput.ExclusiveStartKey = state.lastEvaluatedKey;
-		}
+			const result = await options.documentClient.send(
+				new ScanCommand(commandInput),
+			);
+			state.count += result.Count ?? 0;
+			const nextToken =
+				(result.LastEvaluatedKey as
+					| Record<string, NativeAttributeValue>
+					| undefined) ??
+				undefined;
 
-		const result = await options.documentClient.send(
-			new ScanCommand(commandInput),
-		);
-		state.count += result.Count ?? 0;
-		state.lastEvaluatedKey =
-			(result.LastEvaluatedKey as
-				| Record<string, NativeAttributeValue>
-				| undefined) ??
-			undefined;
-
-		if (!state.lastEvaluatedKey) {
-			break;
-		}
-	}
+			return { nextToken };
+		},
+	});
 
 	return state.count;
 };

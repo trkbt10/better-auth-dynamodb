@@ -3,7 +3,7 @@
  */
 import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
-import type { ResolvedDynamoDBAdapterConfig } from "../adapter-config";
+import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";

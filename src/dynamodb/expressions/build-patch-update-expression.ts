@@ -85,7 +85,7 @@ const toValueSeed = (value: unknown): string => {
 	}
 	try {
 		return JSON.stringify(value);
-	} catch (error) {
+	} catch {
 		throw new DynamoDBAdapterError(
 			"INVALID_UPDATE",
 			"Failed to serialize update value.",

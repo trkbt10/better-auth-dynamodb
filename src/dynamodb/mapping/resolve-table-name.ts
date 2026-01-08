@@ -2,7 +2,7 @@
  * @file Table name resolution for DynamoDB adapter.
  */
 import { DynamoDBAdapterError } from "../errors/errors";
-import type { DynamoDBAdapterConfig } from "../../adapter-config";
+import type { DynamoDBAdapterConfig } from "../../adapter";
 
 export type DefaultModelNameResolver = (model: string) => string;
 

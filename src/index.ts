@@ -6,4 +6,4 @@ export { DynamoDBAdapterError } from "./dynamodb/errors/errors";
 export type {
 	DynamoDBAdapterConfig,
 	DynamoDBTableNameResolver,
-} from "./adapter-config";
+} from "./adapter";

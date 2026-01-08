@@ -3,7 +3,7 @@
  */
 import type { JoinConfig } from "@better-auth/core/db/adapter";
 import type { JoinPlan } from "../query-plan";
-import type { DynamoDBAdapterConfig } from "../../adapter-config";
+import type { DynamoDBAdapterConfig } from "../../adapter";
 import { resolveJoinStrategyHint } from "./resolve-strategy";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 
