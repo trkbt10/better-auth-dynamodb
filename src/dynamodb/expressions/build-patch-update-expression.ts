@@ -115,11 +115,17 @@ const buildExpressionEntry = (props: {
 	const attributeKeys = filteredPath.map((segment) =>
 		props.makeNameKey(segment),
 	);
+	const resolvePathPrefix = (value: string): string => {
+		if (value === "") {
+			return "";
+		}
+		return ".";
+	};
 	const expressionKey = props.path.reduce<string>((acc, segment) => {
 		if (typeof segment === "number") {
 			return `${acc}[${segment}]`;
 		}
-		const prefix = acc === "" ? "" : ".";
+		const prefix = resolvePathPrefix(acc);
 		return `${acc}${prefix}#${props.makeNameKey(segment)}`;
 	}, "");
 	const attributeNameEntries = attributeKeys.map((key, index) => [

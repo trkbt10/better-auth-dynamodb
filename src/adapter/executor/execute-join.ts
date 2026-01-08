@@ -77,6 +77,25 @@ const groupByJoinField = (props: {
 	return grouped;
 };
 
+const resolveEmptyJoinValue = (
+	relation: JoinPlan["relation"],
+): DynamoDBItem[] | null => {
+	if (relation === "one-to-one") {
+		return null;
+	}
+	return [];
+};
+
+const resolveJoinMatches = (
+	grouped: Map<NativeAttributeValue, DynamoDBItem[]>,
+	value: NativeAttributeValue | undefined,
+): DynamoDBItem[] => {
+	if (value === undefined) {
+		return [];
+	}
+	return grouped.get(value) ?? [];
+};
+
 const toJoinWhere = (props: {
 	field: string;
 	operator: DynamoDBWhere["operator"];
@@ -192,7 +211,7 @@ export const executeJoin = async (props: {
 	if (baseValues.length === 0) {
 		return props.baseItems.map((item) => ({
 			...item,
-			[props.join.modelKey]: props.join.relation === "one-to-one" ? null : [],
+			[props.join.modelKey]: resolveEmptyJoinValue(props.join.relation),
 		}));
 	}
 
@@ -280,8 +299,7 @@ export const executeJoin = async (props: {
 
 	return props.baseItems.map((item) => {
 		const joinValue = item[props.join.on.from];
-		const matches =
-			joinValue !== undefined ? grouped.get(joinValue) ?? [] : [];
+		const matches = resolveJoinMatches(grouped, joinValue);
 		const joined = resolveJoinedValue(matches);
 		return {
 			...item,

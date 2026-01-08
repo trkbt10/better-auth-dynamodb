@@ -38,6 +38,19 @@ const resolveScanIndexForward = (props: {
 	return props.serverSort.direction === "asc";
 };
 
+const resolveIndexName = (props: {
+	strategy: AdapterQueryPlan["execution"]["baseStrategy"];
+	keyConditionIndex?: string | undefined;
+}): string | undefined => {
+	if (props.strategy.kind !== "query") {
+		return props.keyConditionIndex;
+	}
+	if (props.strategy.key === "gsi") {
+		return props.strategy.indexName;
+	}
+	return props.keyConditionIndex;
+};
+
 const resolveSortedItems = <T extends Record<string, unknown>>(props: {
 	items: T[];
 	serverSort?: AdapterQueryPlan["execution"]["serverSort"] | undefined;
@@ -200,8 +213,10 @@ const fetchBaseItems = async (props: {
 			where: keyCondition.remainingWhere,
 			getFieldName: props.getFieldName,
 		});
-		const indexName =
-			strategy.key === "gsi" ? strategy.indexName : keyCondition.indexName;
+		const indexName = resolveIndexName({
+			strategy,
+			keyConditionIndex: keyCondition.indexName,
+		});
 		const scanIndexForward = resolveScanIndexForward({
 			serverSort: props.plan.execution.serverSort,
 		});

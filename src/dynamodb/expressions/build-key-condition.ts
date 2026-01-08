@@ -27,11 +27,19 @@ export const buildKeyCondition = (props: {
 		return null;
 	}
 	const primaryKeyName = getFieldName({ model, field: "id" });
+	const resolveConnector = (
+		connector: DynamoDBWhere["connector"],
+	): "AND" | "OR" => {
+		if (connector && connector.toUpperCase() === "OR") {
+			return "OR";
+		}
+		return "AND";
+	};
 	const normalizedEntries = where.map((entry) => ({
 		entry,
 		operator: normalizeWhereOperator(entry.operator),
 		fieldName: getFieldName({ model, field: entry.field }),
-		connector: entry.connector?.toUpperCase() === "OR" ? "OR" : "AND",
+		connector: resolveConnector(entry.connector),
 	}));
 
 	const hasOrConnector = normalizedEntries.some(

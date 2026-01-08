@@ -54,15 +54,28 @@ const matchesWhere = (props: {
 		evaluateCondition({ item, condition }),
 	);
 
-	const andResult = andMatches.length === 0 ? true : andMatches.every(Boolean);
+	const resolveAndResult = (matches: boolean[]): boolean => {
+		if (matches.length === 0) {
+			return true;
+		}
+		return matches.every(Boolean);
+	};
+	const resolveOrResult = (matches: boolean[]): boolean => {
+		if (matches.length === 0) {
+			return true;
+		}
+		return matches.some(Boolean);
+	};
+
+	const andResult = resolveAndResult(andMatches);
 	if (!andResult) {
 		return false;
 	}
 
-	const orResult = orMatches.length === 0 ? true : orMatches.some(Boolean);
+	const orResult = resolveOrResult(orMatches);
 	if (!orResult) {
 		return false;
-	}
+	 }
 
 	return true;
 };
