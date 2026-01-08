@@ -1,23 +1,35 @@
-# Better Auth DynamoDB Adapter
+<div align="center">
 
-A DynamoDB adapter for [Better Auth](https://www.better-auth.com/) that enables authentication data storage using AWS DynamoDB.
+# 🔐 Better Auth DynamoDB Adapter
 
-## Features
+**A DynamoDB adapter for [Better Auth](https://www.better-auth.com/) that enables authentication data storage using AWS DynamoDB.**
 
-- Full DynamoDB support for Better Auth authentication
-- Multi-table schema with optimized GSI configurations
-- Transaction support for atomic operations
-- Configurable table naming (prefix or custom resolver)
-- Built-in table creation utilities
-- TypeScript-first with full type safety
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-Unlicense-purple?style=flat-square)](./UNLICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Better Auth](https://img.shields.io/badge/Better_Auth-1.0+-FF6B6B?style=flat-square)](https://www.better-auth.com/)
+[![AWS DynamoDB](https://img.shields.io/badge/AWS-DynamoDB-FF9900?style=flat-square&logo=amazondynamodb&logoColor=white)](https://aws.amazon.com/dynamodb/)
 
-## Requirements
+</div>
 
-- Node.js 18+
-- AWS DynamoDB (local or cloud)
-- AWS SDK v3
+## ✨ Features
 
-## Installation
+- 🚀 **Full DynamoDB Support** — Native AWS SDK v3 integration
+- 📊 **Optimized GSI Configurations** — Multi-table schema with smart indexing
+- ⚡ **Transaction Support** — Atomic operations for data consistency
+- 🎯 **Flexible Table Naming** — Prefix or custom resolver patterns
+- 🛠️ **Built-in Table Creation** — Zero-config setup utilities
+- 🔒 **TypeScript-First** — Complete type safety out of the box
+
+## 📋 Requirements
+
+| Requirement  | Version        |
+| ------------ | -------------- |
+| Node.js      | 18+            |
+| AWS DynamoDB | Local or Cloud |
+| AWS SDK      | v3             |
+
+## 📦 Installation
 
 ```bash
 # npm
@@ -33,7 +45,8 @@ pnpm add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/l
 bun add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 ```
 
-To install a specific version or branch:
+<details>
+<summary>📌 Install specific version or branch</summary>
 
 ```bash
 # specific tag/release
@@ -43,17 +56,15 @@ npm install github:trkbt10/better-auth-dynamodb#v1.0.0
 npm install github:trkbt10/better-auth-dynamodb#main
 ```
 
-## Quick Start
+</details>
+
+## 🚀 Quick Start
 
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { betterAuth } from "better-auth";
-import {
-  createIndexResolversFromSchemas,
-  dynamodbAdapter,
-  multiTableSchemas,
-} from "better-auth-dynamodb";
+import { createIndexResolversFromSchemas, dynamodbAdapter, multiTableSchemas } from "better-auth-dynamodb";
 
 // 1. Create DynamoDB client
 const client = new DynamoDBClient({ region: "us-east-1" });
@@ -62,8 +73,7 @@ const documentClient = DynamoDBDocumentClient.from(client, {
 });
 
 // 2. Create index resolvers from provided schemas
-const { indexNameResolver, indexKeySchemaResolver } =
-  createIndexResolversFromSchemas(multiTableSchemas);
+const { indexNameResolver, indexKeySchemaResolver } = createIndexResolversFromSchemas(multiTableSchemas);
 
 // 3. Configure the adapter
 const adapter = dynamodbAdapter({
@@ -81,7 +91,7 @@ const auth = betterAuth({
 });
 ```
 
-## Table Setup
+## 🗄️ Table Setup
 
 Before using the adapter, create the required DynamoDB tables.
 
@@ -104,7 +114,8 @@ await createTables({ client, tables });
 
 ### Using AWS CDK
 
-For production deployments, you can create the tables using AWS CDK. The table schemas are based on `multiTableSchemas` in `src/table-schema.ts`.
+<details>
+<summary>📘 CDK Stack Example</summary>
 
 ```ts
 import * as cdk from "aws-cdk-lib";
@@ -191,9 +202,12 @@ export class BetterAuthTablesStack extends cdk.Stack {
 }
 ```
 
+</details>
+
 ### IAM Permissions
 
-The application (Lambda, ECS, EC2, etc.) requires the following IAM permissions to access the Better Auth tables:
+<details>
+<summary>🔑 IAM Policy Example</summary>
 
 ```ts
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -216,7 +230,6 @@ const betterAuthDynamoDBPolicy = new iam.PolicyStatement({
     sessionTable.tableArn,
     accountTable.tableArn,
     verificationTable.tableArn,
-    // Include GSI ARNs
     `${sessionTable.tableArn}/index/*`,
     `${accountTable.tableArn}/index/*`,
     `${verificationTable.tableArn}/index/*`,
@@ -227,104 +240,95 @@ const betterAuthDynamoDBPolicy = new iam.PolicyStatement({
 const transactionPolicy = new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ["dynamodb:TransactWriteItems"],
-  resources: [
-    userTable.tableArn,
-    sessionTable.tableArn,
-    accountTable.tableArn,
-    verificationTable.tableArn,
-  ],
+  resources: [userTable.tableArn, sessionTable.tableArn, accountTable.tableArn, verificationTable.tableArn],
 });
 
-// Example: Attach to Lambda function
+// Attach to Lambda function
 lambdaFunction.addToRolePolicy(betterAuthDynamoDBPolicy);
 lambdaFunction.addToRolePolicy(transactionPolicy);
-
-// Or use the built-in grant methods
-userTable.grantReadWriteData(lambdaFunction);
-sessionTable.grantReadWriteData(lambdaFunction);
-accountTable.grantReadWriteData(lambdaFunction);
-verificationTable.grantReadWriteData(lambdaFunction);
 ```
 
-#### Required IAM Actions Summary
+</details>
 
-| Action | Purpose |
-|--------|---------|
-| `dynamodb:GetItem` | Fetch single items by primary key |
-| `dynamodb:PutItem` | Create new items |
-| `dynamodb:UpdateItem` | Update existing items |
-| `dynamodb:DeleteItem` | Delete items |
-| `dynamodb:Query` | Query tables and GSIs |
-| `dynamodb:Scan` | Scan tables (when index not available) |
-| `dynamodb:BatchGetItem` | Batch read operations |
-| `dynamodb:BatchWriteItem` | Batch write operations |
+#### Required IAM Actions
+
+| Action                        | Purpose                                       |
+| ----------------------------- | --------------------------------------------- |
+| `dynamodb:GetItem`            | Fetch single items by primary key             |
+| `dynamodb:PutItem`            | Create new items                              |
+| `dynamodb:UpdateItem`         | Update existing items                         |
+| `dynamodb:DeleteItem`         | Delete items                                  |
+| `dynamodb:Query`              | Query tables and GSIs                         |
+| `dynamodb:Scan`               | Scan tables (when index not available)        |
+| `dynamodb:BatchGetItem`       | Batch read operations                         |
+| `dynamodb:BatchWriteItem`     | Batch write operations                        |
 | `dynamodb:TransactWriteItems` | Transactional writes (if `transaction: true`) |
 
-This creates four tables with optimized GSI configurations:
+### Table Schema Overview
 
-| Table | Primary Key | Global Secondary Indexes |
-|-------|-------------|-------------------------|
-| `user` | `id` (HASH) | — |
-| `session` | `id` (HASH) | `userId + createdAt`, `token + createdAt` |
-| `account` | `id` (HASH) | `userId`, `providerId + accountId` |
-| `verification` | `id` (HASH) | `identifier + createdAt` |
+| Table          | Primary Key | Global Secondary Indexes                  |
+| -------------- | ----------- | ----------------------------------------- |
+| `user`         | `id` (HASH) | —                                         |
+| `session`      | `id` (HASH) | `userId + createdAt`, `token + createdAt` |
+| `account`      | `id` (HASH) | `userId`, `providerId + accountId`        |
+| `verification` | `id` (HASH) | `identifier + createdAt`                  |
 
-## Configuration Options
+## ⚙️ Configuration
 
 ### Required Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `documentClient` | `DynamoDBDocumentClient` | AWS SDK DynamoDB Document Client instance |
+| Option              | Type                                               | Description                                              |
+| ------------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| `documentClient`    | `DynamoDBDocumentClient`                           | AWS SDK DynamoDB Document Client instance                |
 | `indexNameResolver` | `(props: { model, field }) => string \| undefined` | Resolves field names to GSI names for query optimization |
 
 ### Table Naming
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `tableNamePrefix` | `string` | — | Prefix for all table names (e.g., `"auth_"` → `auth_user`) |
-| `tableNameResolver` | `(modelName: string) => string` | — | Custom function for table name resolution |
-| `usePlural` | `boolean` | `false` | Use pluralized model names (e.g., `users` instead of `user`) |
+| Option              | Type                            | Default | Description                                                  |
+| ------------------- | ------------------------------- | ------- | ------------------------------------------------------------ |
+| `tableNamePrefix`   | `string`                        | —       | Prefix for all table names (e.g., `"auth_"` → `auth_user`)   |
+| `tableNameResolver` | `(modelName: string) => string` | —       | Custom function for table name resolution                    |
+| `usePlural`         | `boolean`                       | `false` | Use pluralized model names (e.g., `users` instead of `user`) |
 
 ### Query & Index Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `indexKeySchemaResolver` | `(props: { model, indexName }) => { partitionKey, sortKey? } \| undefined` | — | Resolves GSI key schemas for composite key queries and server-side sorting |
-| `scanMaxPages` | `number` | — | Maximum scan pages before aborting (required when scans may occur) |
+| Option                   | Type                                                 | Default | Description                                        |
+| ------------------------ | ---------------------------------------------------- | ------- | -------------------------------------------------- |
+| `indexKeySchemaResolver` | `(props) => { partitionKey, sortKey? } \| undefined` | —       | Resolves GSI key schemas for composite key queries |
+| `scanMaxPages`           | `number`                                             | —       | Maximum scan pages before aborting                 |
 
 ### ID Generation
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `customIdGenerator` | `(props: { model }) => string` | `crypto.randomUUID()` | Custom ID generator function (e.g., ULID, nanoid, cuid) |
-| `disableIdGeneration` | `boolean` | `false` | Disable automatic ID generation |
+| Option                | Type                           | Default               | Description                              |
+| --------------------- | ------------------------------ | --------------------- | ---------------------------------------- |
+| `customIdGenerator`   | `(props: { model }) => string` | `crypto.randomUUID()` | Custom ID generator (ULID, nanoid, cuid) |
+| `disableIdGeneration` | `boolean`                      | `false`               | Disable automatic ID generation          |
 
 ### Data Transformation
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `mapKeysTransformInput` | `Record<string, string>` | — | Map field names before saving (e.g., `{ id: "pk" }`) |
-| `mapKeysTransformOutput` | `Record<string, string>` | — | Map field names when reading (e.g., `{ pk: "id" }`) |
-| `customTransformInput` | `(props) => any` | — | Custom transform function for input data |
-| `customTransformOutput` | `(props) => any` | — | Custom transform function for output data |
+| Option                   | Type                     | Description                      |
+| ------------------------ | ------------------------ | -------------------------------- |
+| `mapKeysTransformInput`  | `Record<string, string>` | Map field names before saving    |
+| `mapKeysTransformOutput` | `Record<string, string>` | Map field names when reading     |
+| `customTransformInput`   | `(props) => any`         | Custom transform for input data  |
+| `customTransformOutput`  | `(props) => any`         | Custom transform for output data |
 
 ### Other Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `transaction` | `boolean` | `false` | Enable adapter-layer transactions |
-| `debugLogs` | `DBAdapterDebugLogOption` | — | Better Auth debug logging options |
+| Option        | Type                      | Default | Description                       |
+| ------------- | ------------------------- | ------- | --------------------------------- |
+| `transaction` | `boolean`                 | `false` | Enable adapter-layer transactions |
+| `debugLogs`   | `DBAdapterDebugLogOption` | —       | Better Auth debug logging options |
 
-## Behavior Notes
+## 📝 Behavior Notes
 
 ### Date Handling
 
-The adapter has `supportsDates` disabled. Date fields are stored as ISO 8601 strings and must be serialized before adapter use.
+The adapter has `supportsDates` disabled. Date fields are stored as ISO 8601 strings.
 
 ### ID Generation
 
-By default, the adapter uses `crypto.randomUUID()` for ID generation. You can customize this with `customIdGenerator`:
+By default, the adapter uses `crypto.randomUUID()` for ID generation. Customize with:
 
 ```ts
 import { ulid } from "ulid";
@@ -336,13 +340,13 @@ const adapter = dynamodbAdapter({
 });
 ```
 
-`supportsNumericIds` is disabled. Do not enable Better Auth numeric ID generation (`useNumberId` or `generateId: "serial"`).
+> ⚠️ `supportsNumericIds` is disabled. Do not enable Better Auth numeric ID generation.
 
 ### Scan Protection
 
-Table scans are guarded by `scanMaxPages`. If a query cannot use an index and requires a scan, the adapter will throw an error if `scanMaxPages` is not configured.
+Table scans are guarded by `scanMaxPages`. Queries that cannot use an index will throw if `scanMaxPages` is not configured.
 
-## Examples
+## 💡 Examples
 
 ### Custom table names
 
@@ -366,11 +370,7 @@ const adapter = dynamodbAdapter({
 });
 ```
 
-This maps core models to: `auth_user`, `auth_session`, `auth_account`, `auth_verification`.
-
 ### Custom index resolvers
-
-For custom table schemas, create your own index resolvers:
 
 ```ts
 const indexNameResolver = ({ model, field }) => {
@@ -388,19 +388,19 @@ const adapter = dynamodbAdapter({
 });
 ```
 
-## Local Development
+## 🧪 Local Development
 
 Tests use DynamoDB Local by default.
 
-### Environment variables
+### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | DynamoDB endpoint URL |
-| `AWS_ACCESS_KEY_ID` | `fakeAccessKeyId` | AWS access key (any value for local) |
-| `AWS_SECRET_ACCESS_KEY` | `fakeSecretAccessKey` | AWS secret key (any value for local) |
+| Variable                | Default                 | Description                          |
+| ----------------------- | ----------------------- | ------------------------------------ |
+| `DYNAMODB_ENDPOINT`     | `http://localhost:8000` | DynamoDB endpoint URL                |
+| `AWS_ACCESS_KEY_ID`     | `fakeAccessKeyId`       | AWS access key (any value for local) |
+| `AWS_SECRET_ACCESS_KEY` | `fakeSecretAccessKey`   | AWS secret key (any value for local) |
 
-### Running tests
+### Running Tests
 
 ```bash
 # Start DynamoDB Local (via Docker)
@@ -408,8 +408,12 @@ docker run -p 8000:8000 amazon/dynamodb-local
 
 # Run tests
 bun run test
+
+# Run tests with coverage
+bun run test:cov
 ```
 
-## License
+## 📄 License
 
-This is free and unencumbered software released into the public domain. See [UNLICENSE](UNLICENSE) for details.
+This is free and unencumbered software released into the public domain.
+See [UNLICENSE](./UNLICENSE) for details.

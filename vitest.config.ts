@@ -16,9 +16,24 @@ export default defineConfig({
     setupFiles: [],
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov"],
+      reporter: ["text", "lcov", "json-summary", "html"],
       reportsDirectory: "coverage",
       include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/**/*.spec.ts",
+        "src/**/*.test.ts",
+        "src/**/*.d.ts",
+        "src/index.ts",
+        "src/adapter/query-plan.ts",
+        "src/dynamodb/types.ts",
+        "src/adapter-methods/client-container.ts",
+      ],
+      thresholds: {
+        statements: 80,
+        branches: 80,
+        functions: 80,
+        lines: 80,
+      },
     },
   },
 });
