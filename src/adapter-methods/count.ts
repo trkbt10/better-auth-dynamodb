@@ -12,6 +12,7 @@ import { scanCount } from "../dynamodb/ops/scan";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { AdapterClientContainer } from "./client-container";
+import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
 
 export type CountMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
@@ -26,15 +27,18 @@ export const createCountMethod = (
 	const { documentClient } = client;
 	const { adapterConfig, getFieldName, getDefaultModelName } = options;
 
-	const resolveScanMaxPages = (): number => {
-		if (adapterConfig.scanMaxPages === undefined) {
-			throw new DynamoDBAdapterError(
-				"MISSING_SCAN_LIMIT",
-				"Count scan requires scanMaxPages.",
-			);
-		}
-		return adapterConfig.scanMaxPages;
-	};
+		const resolveScanMaxPages = (): number => {
+			if (adapterConfig.scanPageLimitMode === "unbounded") {
+				return Number.POSITIVE_INFINITY;
+			}
+			if (adapterConfig.scanMaxPages === undefined) {
+				throw new DynamoDBAdapterError(
+					"MISSING_SCAN_LIMIT",
+					"Count scan requires scanMaxPages.",
+				);
+			}
+			return adapterConfig.scanMaxPages;
+		};
 
 	return async ({
 		model,
@@ -43,17 +47,20 @@ export const createCountMethod = (
 		model: string;
 		where?: Where[] | undefined;
 	}) => {
-		const plan = buildQueryPlan({
-			model,
-			where,
-			select: undefined,
+			const plan = buildQueryPlan({
+				model,
+				where,
+				select: undefined,
 			sortBy: undefined,
 			limit: undefined,
 			offset: undefined,
 			join: undefined,
 			getFieldName,
-			adapterConfig,
-		});
+				adapterConfig,
+			});
+			if (adapterConfig.explainQueryPlans) {
+				console.log(formatAdapterQueryPlan(plan));
+			}
 
 		if (plan.execution.requiresClientFilter) {
 			const executePlan = createQueryPlanExecutor({

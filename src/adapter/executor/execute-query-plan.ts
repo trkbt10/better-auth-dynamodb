@@ -62,17 +62,20 @@ const resolveSortedItems = <T extends Record<string, unknown>>(props: {
 	return applySort(props.items, { sortBy: props.sort });
 };
 
-const resolveScanMaxPages = (props: {
-	adapterConfig: DynamoDBAdapterConfig;
-}): number => {
-	if (props.adapterConfig.scanMaxPages === undefined) {
-		throw new DynamoDBAdapterError(
-			"MISSING_SCAN_LIMIT",
-			"Scan execution requires scanMaxPages.",
-		);
-	}
-	return props.adapterConfig.scanMaxPages;
-};
+	const resolveScanMaxPages = (props: {
+		adapterConfig: DynamoDBAdapterConfig;
+	}): number => {
+		if (props.adapterConfig.scanPageLimitMode === "unbounded") {
+			return Number.POSITIVE_INFINITY;
+		}
+		if (props.adapterConfig.scanMaxPages === undefined) {
+			throw new DynamoDBAdapterError(
+				"MISSING_SCAN_LIMIT",
+				"Scan execution requires scanMaxPages.",
+			);
+		}
+		return props.adapterConfig.scanMaxPages;
+	};
 
 const toDynamoWhere = (where: NormalizedWhere[]): DynamoDBWhere[] =>
 	where.map((entry) => ({

@@ -2,12 +2,13 @@
  * @file Tests for DynamoDB adapter behavior.
  */
 import type { Where } from "@better-auth/core/db/adapter";
-import {
-	PutCommand,
-	QueryCommand,
-	ScanCommand,
-	TransactWriteCommand,
-} from "@aws-sdk/lib-dynamodb";
+	import {
+		PutCommand,
+		BatchGetCommand,
+		QueryCommand,
+		ScanCommand,
+		TransactWriteCommand,
+	} from "@aws-sdk/lib-dynamodb";
 import { createDocumentClientStub } from "../spec/dynamodb-document-client";
 import { dynamodbAdapter } from "./adapter";
 
@@ -141,15 +142,15 @@ describe("dynamodbAdapter", () => {
 		expect(sendCalls.length).toBe(0);
 	});
 
-	test("uses query for primary key lookups", async () => {
-		const { documentClient, sendCalls } = createDocumentClientStub({
-			respond: async (command) => {
-				if (command instanceof QueryCommand) {
-					return { Items: [{ id: "user-1" }] };
-				}
-				return {};
-			},
-		});
+		test("uses batch-get for primary key lookups", async () => {
+			const { documentClient, sendCalls } = createDocumentClientStub({
+				respond: async (command) => {
+					if (command instanceof BatchGetCommand) {
+						return { Responses: { auth_user: [{ id: "user-1" }] } };
+					}
+					return {};
+				},
+			});
 
 		const adapterFactory = dynamodbAdapter({
 			documentClient,
@@ -162,11 +163,11 @@ describe("dynamodbAdapter", () => {
 			{ field: "id", operator: "eq", value: "user-1" },
 		];
 
-		const result = await adapter.findOne({ model: "user", where });
+			const result = await adapter.findOne({ model: "user", where });
 
-		expect(result).toEqual({ id: "user-1" });
-		expect(sendCalls[0]).toBeInstanceOf(QueryCommand);
-	});
+			expect(result).toEqual({ id: "user-1" });
+			expect(sendCalls[0]).toBeInstanceOf(BatchGetCommand);
+		});
 
 	test("uses scan for non-key lookups", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({

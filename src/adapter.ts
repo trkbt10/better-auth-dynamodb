@@ -20,6 +20,7 @@ import { createFindManyMethod } from "./adapter-methods/find-many";
 import { createFindOneMethod } from "./adapter-methods/find-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
+import { createPrimaryKeyBatchLoader } from "./adapter/batching/primary-key-batch-loader";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
 import { createTransactionState, executeTransaction, type DynamoDBTransactionState } from "./dynamodb/ops/transaction";
 import type { AdapterClientContainer } from "./adapter-methods/client-container";
@@ -55,6 +56,20 @@ type DynamoDBSpecificConfig = {
   tableNamePrefix?: string | undefined;
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
+  /**
+   * Controls ScanCommand page limit behavior.
+   * - "throw": enforce scanMaxPages and throw SCAN_PAGE_LIMIT when exceeded.
+   * - "unbounded": ignore scanMaxPages page cap (continues scanning).
+   *
+   * @default "throw"
+   */
+  scanPageLimitMode?: "throw" | "unbounded" | undefined;
+  /**
+   * Print adapter query plans / execution strategy decisions to console.
+   *
+   * @default false
+   */
+  explainQueryPlans?: boolean | undefined;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   indexKeySchemaResolver?:
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
@@ -76,6 +91,8 @@ export type ResolvedDynamoDBAdapterConfig = {
   tableNamePrefix?: string | undefined;
   tableNameResolver?: DynamoDBTableNameResolver | undefined;
   scanMaxPages?: number | undefined;
+  scanPageLimitMode: "throw" | "unbounded";
+  explainQueryPlans: boolean;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   indexKeySchemaResolver?:
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
@@ -99,6 +116,12 @@ const createDynamoDbCustomizer = (props: {
 
   return ({ getFieldName, getDefaultModelName }) => {
     const adapterClient: AdapterClientContainer = { documentClient };
+    const primaryKeyLoader = createPrimaryKeyBatchLoader({
+      documentClient,
+      adapterConfig,
+      getFieldName,
+      getDefaultModelName,
+    });
     const sharedOptions: FindManyOptions = {
       adapterConfig,
       getFieldName,
@@ -121,7 +144,10 @@ const createDynamoDbCustomizer = (props: {
 
     return {
       create: createCreateMethod(adapterClient, createOptions),
-      findOne: createFindOneMethod(adapterClient, sharedOptions),
+      findOne: createFindOneMethod(adapterClient, {
+        ...sharedOptions,
+        primaryKeyLoader,
+      }),
       findMany: createFindManyMethod(adapterClient, sharedOptions),
       count: createCountMethod(adapterClient, countOptions),
       update: createUpdateMethod(adapterClient, updateOptions),
@@ -146,6 +172,8 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
     tableNamePrefix: config.tableNamePrefix,
     tableNameResolver: config.tableNameResolver,
     scanMaxPages: config.scanMaxPages,
+    scanPageLimitMode: config.scanPageLimitMode ?? "throw",
+    explainQueryPlans: config.explainQueryPlans ?? false,
     indexNameResolver: config.indexNameResolver,
     indexKeySchemaResolver: config.indexKeySchemaResolver,
     transaction: config.transaction ?? false,

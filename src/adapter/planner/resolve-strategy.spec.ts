@@ -42,21 +42,20 @@ describe("resolveBaseStrategy", () => {
 
 	test("uses PK query for id equality", () => {
 		const idField = helpers.getFieldName({ model: "user", field: "id" });
-		const result = resolveBaseStrategy({
-			model: "user",
-			where: [
-				{
+			const result = resolveBaseStrategy({
+				model: "user",
+				where: [
+					{
 					field: idField,
 					operator: "eq",
 					value: "id_1",
 					connector: "AND",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: false,
-		});
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
 		expect(result).toEqual({ kind: "query", key: "pk" });
 	});
@@ -66,21 +65,20 @@ describe("resolveBaseStrategy", () => {
 			model: "session",
 			field: "userId",
 		});
-		const result = resolveBaseStrategy({
-			model: "session",
-			where: [
-				{
+			const result = resolveBaseStrategy({
+				model: "session",
+				where: [
+					{
 					field: userIdField,
 					operator: "eq",
 					value: "user_1",
 					connector: "AND",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: false,
-		});
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
 		expect(result).toEqual({
 			kind: "query",
@@ -91,21 +89,20 @@ describe("resolveBaseStrategy", () => {
 
 	test("uses batch-get for id IN lists", () => {
 		const idField = helpers.getFieldName({ model: "user", field: "id" });
-		const result = resolveBaseStrategy({
-			model: "user",
-			where: [
-				{
+			const result = resolveBaseStrategy({
+				model: "user",
+				where: [
+					{
 					field: idField,
 					operator: "in",
 					value: ["id_1", "id_2"],
 					connector: "AND",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: false,
-		});
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
 		expect(result).toEqual({ kind: "batch-get" });
 	});
@@ -115,21 +112,20 @@ describe("resolveBaseStrategy", () => {
 			model: "session",
 			field: "token",
 		});
-		const result = resolveBaseStrategy({
-			model: "session",
-			where: [
-				{
+			const result = resolveBaseStrategy({
+				model: "session",
+				where: [
+					{
 					field: tokenField,
 					operator: "in",
 					value: ["token_1", "token_2"],
 					connector: "AND",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: false,
-		});
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
 		expect(result).toEqual({
 			kind: "multi-query",
@@ -138,10 +134,10 @@ describe("resolveBaseStrategy", () => {
 		});
 	});
 
-	test("falls back to scan for OR connectors", () => {
-		const emailField = helpers.getFieldName({ model: "user", field: "email" });
-		const result = resolveBaseStrategy({
-			model: "user",
+		test("falls back to scan for OR-only clauses", () => {
+			const emailField = helpers.getFieldName({ model: "user", field: "email" });
+			const result = resolveBaseStrategy({
+				model: "user",
 			where: [
 				{
 					field: emailField,
@@ -157,19 +153,46 @@ describe("resolveBaseStrategy", () => {
 					connector: "OR",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: true,
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
+
+			expect(result).toEqual({ kind: "scan" });
 		});
 
-		expect(result).toEqual({ kind: "scan" });
-	});
+		test("uses query when key condition is AND and OR filters exist", () => {
+			const idField = helpers.getFieldName({ model: "user", field: "id" });
+			const emailField = helpers.getFieldName({ model: "user", field: "email" });
+			const result = resolveBaseStrategy({
+				model: "user",
+				where: [
+					{
+						field: idField,
+						operator: "eq",
+						value: "id_1",
+						connector: "AND",
+						requiresClientFilter: false,
+					},
+					{
+						field: emailField,
+						operator: "eq",
+						value: "a@example.com",
+						connector: "OR",
+						requiresClientFilter: false,
+					},
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
-	test("falls back to scan for non-indexed fields", () => {
-		const nameField = helpers.getFieldName({ model: "user", field: "name" });
-		const result = resolveBaseStrategy({
-			model: "user",
+			expect(result).toEqual({ kind: "query", key: "pk" });
+		});
+
+		test("falls back to scan for non-indexed fields", () => {
+			const nameField = helpers.getFieldName({ model: "user", field: "name" });
+			const result = resolveBaseStrategy({
+				model: "user",
 			where: [
 				{
 					field: nameField,
@@ -178,11 +201,10 @@ describe("resolveBaseStrategy", () => {
 					connector: "AND",
 					requiresClientFilter: false,
 				},
-			],
-			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
-			hasOrConnector: false,
-		});
+				],
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver },
+			});
 
 		expect(result).toEqual({ kind: "scan" });
 	});

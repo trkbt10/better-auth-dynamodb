@@ -41,16 +41,9 @@ export const buildKeyCondition = (props: {
 		connector: resolveConnector(entry.connector),
 	}));
 
-	const hasOrConnector = normalizedEntries.some(
-		({ connector }) => connector === "OR",
-	);
-	if (hasOrConnector) {
-		return null;
-	}
-
 	const primaryKeyEntry = normalizedEntries.find(
-		({ operator, fieldName }) =>
-			operator === "eq" && fieldName === primaryKeyName,
+		({ operator, fieldName, connector }) =>
+			operator === "eq" && connector === "AND" && fieldName === primaryKeyName,
 	);
 	if (primaryKeyEntry) {
 		const remainingWhere = where.filter(
@@ -66,7 +59,10 @@ export const buildKeyCondition = (props: {
 		};
 	}
 
-	const indexEntry = normalizedEntries.find(({ operator, fieldName, entry }) => {
+	const indexEntry = normalizedEntries.find(({ operator, fieldName, entry, connector }) => {
+		if (connector !== "AND") {
+			return false;
+		}
 		if (operator !== "eq") {
 			return false;
 		}
@@ -102,8 +98,8 @@ export const buildKeyCondition = (props: {
 			return undefined;
 		}
 		return normalizedEntries.find(
-			({ operator, fieldName }) =>
-				operator === "eq" && fieldName === sortKey,
+			({ operator, fieldName, connector }) =>
+				operator === "eq" && connector === "AND" && fieldName === sortKey,
 		);
 	};
 	const resolveKeyConditionExpression = (hasSortKey: boolean): string => {

@@ -39,17 +39,20 @@ const resolveScanLimit = (props: {
 	return props.limit;
 };
 
-const resolveScanMaxPages = (props: {
-	adapterConfig: DynamoDBAdapterConfig;
-}): number => {
-	if (props.adapterConfig.scanMaxPages === undefined) {
-		throw new DynamoDBAdapterError(
-			"MISSING_SCAN_LIMIT",
-			"Join scan requires scanMaxPages.",
-		);
-	}
-	return props.adapterConfig.scanMaxPages;
-};
+	const resolveScanMaxPages = (props: {
+		adapterConfig: DynamoDBAdapterConfig;
+	}): number => {
+		if (props.adapterConfig.scanPageLimitMode === "unbounded") {
+			return Number.POSITIVE_INFINITY;
+		}
+		if (props.adapterConfig.scanMaxPages === undefined) {
+			throw new DynamoDBAdapterError(
+				"MISSING_SCAN_LIMIT",
+				"Join scan requires scanMaxPages.",
+			);
+		}
+		return props.adapterConfig.scanMaxPages;
+	};
 
 const extractBaseValues = (props: {
 	items: DynamoDBItem[];

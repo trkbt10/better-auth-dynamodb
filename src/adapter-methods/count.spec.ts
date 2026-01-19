@@ -57,17 +57,19 @@ describe("createCountMethod", () => {
 			},
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: 10,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: 10,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,
@@ -94,17 +96,19 @@ describe("createCountMethod", () => {
 			},
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: 10,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: 10,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,
@@ -126,17 +130,19 @@ describe("createCountMethod", () => {
 			respond: async () => ({}),
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: undefined,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: undefined,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,
@@ -169,17 +175,19 @@ describe("createCountMethod", () => {
 			},
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: 10,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: 10,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,
@@ -205,17 +213,19 @@ describe("createCountMethod", () => {
 			}),
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: 10,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: 10,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,
@@ -242,17 +252,19 @@ describe("createCountMethod", () => {
 			},
 		});
 
-		const adapterConfig: ResolvedDynamoDBAdapterConfig = {
-			documentClient,
-			usePlural: false,
-			debugLogs: undefined,
-			tableNamePrefix: "",
-			tableNameResolver: (model) => model,
-			scanMaxPages: 10,
-			indexNameResolver,
-			indexKeySchemaResolver,
-			transaction: false,
-		};
+			const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+				documentClient,
+				usePlural: false,
+				debugLogs: undefined,
+				tableNamePrefix: "",
+				tableNameResolver: (model) => model,
+				scanMaxPages: 10,
+				scanPageLimitMode: "throw",
+				explainQueryPlans: false,
+				indexNameResolver,
+				indexKeySchemaResolver,
+				transaction: false,
+			};
 
 		const count = createCountMethod({ documentClient }, {
 			adapterConfig,

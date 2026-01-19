@@ -173,6 +173,55 @@ describe("execute query plan", () => {
 		expect(command).toBeInstanceOf(ScanCommand);
 	});
 
+	test("uses QueryCommand when PK condition is AND and OR filters exist", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const idField = helpers.getFieldName({ model: "user", field: "id" });
+		const emailField = helpers.getFieldName({ model: "user", field: "email" });
+		const plan = buildQueryPlan({
+			model: "user",
+			where: [
+				{
+					field: idField,
+					operator: "eq",
+					value: "user_1",
+				},
+				{
+					field: emailField,
+					operator: "eq",
+					value: "a@example.com",
+					connector: "OR",
+				},
+			],
+			select: undefined,
+			sortBy: undefined,
+			limit: 5,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		const command = sendCalls[0] as QueryCommand;
+		expect(command).toBeInstanceOf(QueryCommand);
+	});
+
 	test("sets ScanIndexForward when sortBy matches index sort key", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {

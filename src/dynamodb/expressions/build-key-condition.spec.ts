@@ -107,23 +107,35 @@ describe("buildKeyCondition", () => {
 		});
 	});
 
-	test("skips key condition when OR connector is present", () => {
-		const where: DynamoDBWhere[] = [
-			{ field: "id", operator: "eq", value: "user-1" },
-			{
-				field: "email",
+		test("builds key condition when OR connector is only in filters", () => {
+			const where: DynamoDBWhere[] = [
+				{ field: "id", operator: "eq", value: "user-1" },
+				{
+					field: "email",
 				operator: "eq",
 				value: "a@example.com",
 				connector: "OR",
 			},
 		];
-		const result = buildKeyCondition({
-			model: "user",
-			where,
-			getFieldName,
-			indexNameResolver,
-		});
+			const result = buildKeyCondition({
+				model: "user",
+				where,
+				getFieldName,
+				indexNameResolver,
+			});
 
-		expect(result).toBeNull();
+			expect(result).toEqual({
+				keyConditionExpression: "#pk = :pk",
+				expressionAttributeNames: { "#pk": "id" },
+				expressionAttributeValues: { ":pk": "user-1" },
+				remainingWhere: [
+					{
+						field: "email",
+						operator: "eq",
+						value: "a@example.com",
+						connector: "OR",
+					},
+				],
+			});
+		});
 	});
-});

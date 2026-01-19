@@ -6,6 +6,7 @@ import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";
+import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
 
 type FindManyInput = {
 	model: string;
@@ -46,22 +47,26 @@ export const createFindManyExecutor = (
 		sortBy,
 		offset,
 		join,
-	}: FindManyInput) => {
-		const plan = buildQueryPlan({
-			model,
-			where,
-			select: undefined,
+		}: FindManyInput) => {
+			const plan = buildQueryPlan({
+				model,
+				where,
+				select: undefined,
 			sortBy,
 			limit,
 			offset,
 			join,
 			getFieldName,
-			adapterConfig,
-		});
+				adapterConfig,
+			});
 
-		return executePlan(plan);
+			if (adapterConfig.explainQueryPlans) {
+				console.log(formatAdapterQueryPlan(plan));
+			}
+
+			return executePlan(plan);
+		};
 	};
-};
 
 export const createFindManyMethod = (
 	client: AdapterClientContainer,

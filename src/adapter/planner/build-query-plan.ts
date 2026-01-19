@@ -188,13 +188,12 @@ export const buildQueryPlan = (props: {
 		where: normalizedWhere,
 		requiresSelectSupplement: normalizedSelect.requiresSelectSupplement,
 	});
-	const baseStrategy = resolveBaseStrategy({
-		model: props.model,
-		where: normalizedWhere,
-		getFieldName: props.getFieldName,
-		adapterConfig: props.adapterConfig,
-		hasOrConnector: constraints.hasOrConnector,
-	});
+		const baseStrategy = resolveBaseStrategy({
+			model: props.model,
+			where: normalizedWhere,
+			getFieldName: props.getFieldName,
+			adapterConfig: props.adapterConfig,
+		});
 	const joinStrategies = joins.reduce<Record<string, ExecutionStrategy>>(
 		(acc, entry) => {
 			acc[entry.modelKey] = entry.strategy;

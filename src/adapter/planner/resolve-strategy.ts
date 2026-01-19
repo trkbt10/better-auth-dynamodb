@@ -71,7 +71,6 @@ export const resolveBaseStrategy = (props: {
 	where: NormalizedWhere[];
 	getFieldName: (args: { model: string; field: string }) => string;
 	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
-	hasOrConnector: boolean;
 }): ExecutionStrategy => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -79,16 +78,14 @@ export const resolveBaseStrategy = (props: {
 			"resolveBaseStrategy requires explicit props.",
 		);
 	}
-	if (props.hasOrConnector) {
-		return { kind: "scan" };
-	}
+	const andWhere = props.where.filter((entry) => entry.connector === "AND");
 
 	const primaryKeyName = resolvePrimaryKeyName({
 		model: props.model,
 		getFieldName: props.getFieldName,
 	});
 	const pkEqEntry = resolvePkEntry({
-		where: props.where,
+		where: andWhere,
 		primaryKeyName,
 		operator: "eq",
 	});
@@ -97,7 +94,7 @@ export const resolveBaseStrategy = (props: {
 	}
 
 	const gsiEntry = resolveGsiEntry({
-		where: props.where,
+		where: andWhere,
 		model: props.model,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
 	});
@@ -106,7 +103,7 @@ export const resolveBaseStrategy = (props: {
 	}
 
 	const gsiInEntry = resolveGsiInEntry({
-		where: props.where,
+		where: andWhere,
 		model: props.model,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
 	});
@@ -119,7 +116,7 @@ export const resolveBaseStrategy = (props: {
 	}
 
 	const pkInEntry = resolvePkEntry({
-		where: props.where,
+		where: andWhere,
 		primaryKeyName,
 		operator: "in",
 	});
