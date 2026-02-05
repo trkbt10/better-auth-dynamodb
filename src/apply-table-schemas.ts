@@ -11,6 +11,7 @@ import {
 	type DynamoDBClient,
 	type GlobalSecondaryIndex,
 	type GlobalSecondaryIndexDescription,
+	type TableDescription,
 } from "@aws-sdk/client-dynamodb";
 import type { TableSchema } from "./dynamodb/types";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
@@ -63,7 +64,7 @@ const listTableNames = async (client: DynamoDBClient): Promise<string[]> => {
 const describeTable = async (
 	client: DynamoDBClient,
 	tableName: string,
-): Promise<NonNullable<Awaited<ReturnType<DynamoDBClient["send"]>>["Table"]>> => {
+): Promise<TableDescription> => {
 	const response = await client.send(new DescribeTableCommand({ TableName: tableName }));
 	if (!response.Table) {
 		throw new DynamoDBAdapterError(
