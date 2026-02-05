@@ -59,31 +59,76 @@ export const buildKeyCondition = (props: {
 		};
 	}
 
-	const indexEntry = normalizedEntries.find(({ operator, fieldName, entry, connector }) => {
-		if (connector !== "AND") {
+	const hasSortKeyEntry = (sortKey: string | undefined): boolean => {
+		if (!sortKey) {
 			return false;
 		}
-		if (operator !== "eq") {
-			return false;
-		}
-		const indexName = indexNameResolver({ model, field: entry.field });
-		if (!indexName) {
-			return false;
-		}
-		return fieldName.length > 0;
-	});
+		return normalizedEntries.some((entry) => {
+			if (entry.connector !== "AND") {
+				return false;
+			}
+			if (entry.operator !== "eq") {
+				return false;
+			}
+			return entry.fieldName === sortKey;
+		});
+	};
 
-	if (!indexEntry) {
+	const resolveIndexKeySchema = (indexName: string) => {
+		if (!indexKeySchemaResolver) {
+			return undefined;
+		}
+		return indexKeySchemaResolver({ model, indexName });
+	};
+
+	const indexCandidates = normalizedEntries
+		.filter((candidate) => {
+			if (candidate.connector !== "AND") {
+				return false;
+			}
+			if (candidate.operator !== "eq") {
+				return false;
+			}
+			return Boolean(indexNameResolver({ model, field: candidate.entry.field }));
+		})
+		.map((candidate) => {
+			const indexName = indexNameResolver({ model, field: candidate.entry.field });
+			if (!indexName) {
+				return null;
+			}
+			const keySchema = resolveIndexKeySchema(indexName);
+			const sortKey = keySchema?.sortKey;
+			const matchedSortKey = hasSortKeyEntry(sortKey);
+			return {
+				candidate,
+				indexName,
+				score: matchedSortKey ? 2 : 1,
+			};
+		})
+		.filter((entry): entry is Exclude<typeof entry, null> => entry !== null);
+
+	const resolveBestIndexEntry = () => {
+		const best = indexCandidates.reduce<
+			{ candidate: typeof normalizedEntries[number]; indexName: string; score: number } | undefined
+		>((acc, candidate) => {
+			if (!acc) {
+				return candidate;
+			}
+			if (candidate.score > acc.score) {
+				return candidate;
+			}
+			return acc;
+		}, undefined);
+		return best;
+	};
+
+	const bestIndexEntry = resolveBestIndexEntry();
+	if (!bestIndexEntry) {
 		return null;
 	}
 
-	const indexName = indexNameResolver({
-		model,
-		field: indexEntry.entry.field,
-	});
-	if (!indexName) {
-		return null;
-	}
+	const indexName = bestIndexEntry.indexName;
+	const indexEntryResolved = bestIndexEntry.candidate;
 
 	const resolveKeySchema = (): { sortKey?: string | undefined } | undefined => {
 		if (!indexKeySchemaResolver) {
@@ -151,17 +196,17 @@ export const buildKeyCondition = (props: {
 		return entry.entry.value as NativeAttributeValue;
 	};
 	const remainingWhere = where.filter(
-		(entry) => entry !== indexEntry.entry && entry !== sortKeyEntry?.entry,
+		(entry) => entry !== indexEntryResolved.entry && entry !== sortKeyEntry?.entry,
 	);
 	const keyConditionExpression = resolveKeyConditionExpression(
 		Boolean(sortKeyEntry),
 	);
 	const expressionAttributeNames = buildExpressionAttributeNames({
-		partitionKey: indexEntry.fieldName,
+		partitionKey: indexEntryResolved.fieldName,
 		sortKey: resolveSortKeyName(sortKeyEntry),
 	});
 	const expressionAttributeValues = buildExpressionAttributeValues({
-		partitionValue: indexEntry.entry.value as NativeAttributeValue,
+		partitionValue: indexEntryResolved.entry.value as NativeAttributeValue,
 		sortValue: resolveSortKeyValue(sortKeyEntry),
 	});
 

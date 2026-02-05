@@ -76,20 +76,77 @@ describe("fallback join batching", () => {
 
 	test("chunks batch-get when fallback join needs many user ids", async () => {
 		const sessionCount = 12_345;
+		const scanPageSize = 1000;
 		const explainQueryPlans = process.env.EXPLAIN_QUERY_PLANS === "1";
+		const explainDynamoOperations =
+			process.env.EXPLAIN_DYNAMODB_OPERATIONS === "1";
+
+		const resolveStartIndex = (exclusiveStartKey: unknown): number => {
+			if (typeof exclusiveStartKey !== "object" || exclusiveStartKey === null) {
+				return 0;
+			}
+			const startId = (exclusiveStartKey as { id?: unknown }).id;
+			if (typeof startId !== "string") {
+				return 0;
+			}
+			if (!startId.startsWith("session_")) {
+				return 0;
+			}
+			const parsed = Number.parseInt(startId.slice("session_".length), 10);
+			if (!Number.isFinite(parsed)) {
+				return 0;
+			}
+			return parsed + 1;
+		};
+
+		const resolveRequestedLimit = (limit: unknown): number => {
+			if (typeof limit !== "number") {
+				return Number.POSITIVE_INFINITY;
+			}
+			return limit;
+		};
+
+		const resolveLastEvaluatedKey = (props: {
+			endExclusive: number;
+			pageCount: number;
+		}): { id: string } | undefined => {
+			if (props.pageCount <= 0) {
+				return undefined;
+			}
+			if (props.endExclusive >= sessionCount) {
+				return undefined;
+			}
+			return { id: `session_${props.endExclusive - 1}` };
+		};
 
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {
 				if (command instanceof ScanCommand) {
 					const tableName = command.input.TableName;
 					if (tableName === "auth_session") {
-						const Items = Array.from({ length: sessionCount }, (_, index) => ({
-							id: `session_${index}`,
-							userId: `user_${index}`,
-						}));
+						const startIndex = resolveStartIndex(
+							command.input.ExclusiveStartKey,
+						);
+						const requestedLimit = resolveRequestedLimit(command.input.Limit);
+						const remaining = Math.max(0, sessionCount - startIndex);
+						const pageCount = Math.min(scanPageSize, requestedLimit, remaining);
+
+						const Items = Array.from({ length: pageCount }, (_, index) => {
+							const offset = startIndex + index;
+							return {
+								id: `session_${offset}`,
+								userId: `user_${offset}`,
+							};
+						});
+
+						const endExclusive = startIndex + pageCount;
+						const lastEvaluatedKey = resolveLastEvaluatedKey({
+							endExclusive,
+							pageCount,
+						});
 						return {
 							Items,
-							LastEvaluatedKey: undefined,
+							LastEvaluatedKey: lastEvaluatedKey,
 						};
 					}
 					return { Items: [], LastEvaluatedKey: undefined };
@@ -111,8 +168,9 @@ describe("fallback join batching", () => {
 		const adapterFactory = dynamodbAdapter({
 			documentClient,
 			tableNamePrefix: "auth_",
-			scanMaxPages: 1,
+			scanMaxPages: 50,
 			explainQueryPlans,
+			explainDynamoOperations,
 			indexNameResolver: () => undefined,
 		});
 		const options: BetterAuthOptions = {
@@ -129,10 +187,11 @@ describe("fallback join batching", () => {
 		expect(sessions).toHaveLength(sessionCount);
 
 		const expectedBatchGets = Math.ceil(sessionCount / 100);
+		const expectedScanPages = Math.ceil(sessionCount / scanPageSize);
 		const scanCalls = sendCalls.filter((call) => call instanceof ScanCommand);
 		const batchCalls = sendCalls.filter((call) => call instanceof BatchGetCommand);
 		const queryCalls = sendCalls.filter((call) => call instanceof QueryCommand);
-		expect(scanCalls).toHaveLength(1);
+		expect(scanCalls).toHaveLength(expectedScanPages);
 		expect(batchCalls).toHaveLength(expectedBatchGets);
 		expect(queryCalls).toHaveLength(0);
 	});

@@ -99,7 +99,7 @@ Before using the adapter, create the required DynamoDB tables.
 
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { createTables, multiTableSchemas } from "better-auth-dynamodb";
+import { applyTableSchemas, multiTableSchemas } from "better-auth-dynamodb";
 
 const client = new DynamoDBClient({ region: "us-east-1" });
 
@@ -109,7 +109,7 @@ const tables = multiTableSchemas.map((schema) => ({
   tableName: `better_auth_${schema.tableName}`,
 }));
 
-await createTables({ client, tables });
+await applyTableSchemas({ client, tables });
 ```
 
 ### Using AWS CDK

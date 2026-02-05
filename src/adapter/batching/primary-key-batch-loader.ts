@@ -85,7 +85,12 @@ export const createPrimaryKeyBatchLoader = (props: {
 		if (props.adapterConfig.explainQueryPlans) {
 			const chunkCount = Math.ceil(keys.length / 100);
 			console.log(
-				`[BatchGetPlan] model=${group.model} table=${group.tableName} key=${group.keyField} keys=${keys.length} chunks=${chunkCount}`,
+				[
+					"EXPLAIN DynamoDBAdapter",
+					`BATCH-GET model=${group.model} table=${group.tableName} key=${group.keyField}`,
+					"PLAN",
+					`  -> BATCH-GET keys=${keys.length} chunks=${chunkCount} estimatedCommands=${chunkCount}`,
+				].join("\n"),
 			);
 		}
 
@@ -95,6 +100,7 @@ export const createPrimaryKeyBatchLoader = (props: {
 				tableName: group.tableName,
 				keyField: group.keyField,
 				keys,
+				explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
 			});
 
 			const itemMap = new Map<string, Record<string, NativeAttributeValue>>();

@@ -2,7 +2,7 @@
  * @file Official Better Auth adapter test suite for DynamoDB adapter (multi-table).
  */
 import { createIndexResolversFromSchemas, dynamodbAdapter } from "../src/index";
-import { createTables } from "../src/create-tables";
+import { applyTableSchemas } from "../src/apply-table-schemas";
 import { multiTableSchemas } from "../src/table-schema";
 import { testAdapter } from "./better-auth-adapter-test";
 import {
@@ -42,7 +42,7 @@ const adapterFactory = dynamodbAdapter({
 
 describe("DynamoDB Adapter - Official Adapter Tests (multi-table)", () => {
 	beforeAll(async () => {
-		await createTables({
+		await applyTableSchemas({
 			client,
 			tables,
 		});

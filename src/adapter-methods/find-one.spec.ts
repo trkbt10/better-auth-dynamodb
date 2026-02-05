@@ -22,6 +22,7 @@ describe("createFindOneMethod", () => {
 		scanMaxPages: 1,
 		scanPageLimitMode: "throw",
 		explainQueryPlans: false,
+		explainDynamoOperations: false,
 		indexNameResolver: () => undefined,
 		indexKeySchemaResolver: undefined,
 		transaction: false,

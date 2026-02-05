@@ -10,6 +10,7 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { applyExpressionAttributes } from "./apply-expression-attributes";
 import { paginate } from "./paginate";
 import { resolveRemainingLimit } from "./resolve-remaining-limit";
+import type { DynamoDBOperationStatsCollector } from "./operation-stats";
 
 export type DynamoDBQueryOptions = {
 	documentClient: DynamoDBDocumentClient;
@@ -21,14 +22,18 @@ export type DynamoDBQueryOptions = {
 	expressionAttributeValues: Record<string, NativeAttributeValue>;
 	limit?: number | undefined;
 	scanIndexForward?: boolean | undefined;
+	explainDynamoOperations?: boolean | undefined;
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
 };
 
 export const queryItems = async (
 	options: DynamoDBQueryOptions,
 ): Promise<Record<string, NativeAttributeValue>[]> => {
 	const items: Record<string, NativeAttributeValue>[] = [];
+	const state = { pages: 0 };
 	await paginate<Record<string, NativeAttributeValue>>({
 		fetchPage: async (lastEvaluatedKey) => {
+			state.pages += 1;
 			const remaining = resolveRemainingLimit(options.limit, items.length);
 
 			if (remaining === 0) {
@@ -66,6 +71,10 @@ export const queryItems = async (
 			);
 			const pageItems = (result.Items ?? []) as Record<string, unknown>[];
 			items.push(...pageItems);
+			options.operationStats?.recordQuery({
+				tableName: options.tableName,
+				items: pageItems.length,
+			});
 
 			const nextToken =
 				(result.LastEvaluatedKey as
@@ -77,6 +86,15 @@ export const queryItems = async (
 		},
 	});
 
+	if (options.explainDynamoOperations) {
+		const limit = options.limit === undefined ? "∞" : String(options.limit);
+		const hasFilter = options.filterExpression ? "yes" : "no";
+		const indexName = options.indexName ?? "(primary)";
+		console.log(
+			`DDB-OP QUERY table=${options.tableName} index=${indexName} pages=${state.pages} items=${items.length} limit=${limit} filter=${hasFilter}`,
+		);
+	}
+
 	return items;
 };
 
@@ -84,9 +102,11 @@ export const queryCount = async (
 	options: Omit<DynamoDBQueryOptions, "limit">,
 ): Promise<number> => {
 	const state = { count: 0 };
+	const pageState = { pages: 0 };
 
 	await paginate<Record<string, NativeAttributeValue>>({
 		fetchPage: async (lastEvaluatedKey) => {
+			pageState.pages += 1;
 			const commandInput: QueryCommandInput = {
 				TableName: options.tableName,
 				KeyConditionExpression: options.keyConditionExpression,
@@ -110,7 +130,12 @@ export const queryCount = async (
 			const result = await options.documentClient.send(
 				new QueryCommand(commandInput),
 			);
-			state.count += result.Count ?? 0;
+			const pageCount = result.Count ?? 0;
+			state.count += pageCount;
+			options.operationStats?.recordQuery({
+				tableName: options.tableName,
+				items: pageCount,
+			});
 			const nextToken =
 				(result.LastEvaluatedKey as
 					| Record<string, NativeAttributeValue>
@@ -120,6 +145,14 @@ export const queryCount = async (
 			return { nextToken };
 		},
 	});
+
+	if (options.explainDynamoOperations) {
+		const hasFilter = options.filterExpression ? "yes" : "no";
+		const indexName = options.indexName ?? "(primary)";
+		console.log(
+			`DDB-OP QUERY-COUNT table=${options.tableName} index=${indexName} pages=${pageState.pages} count=${state.count} filter=${hasFilter}`,
+		);
+	}
 
 	return state.count;
 };

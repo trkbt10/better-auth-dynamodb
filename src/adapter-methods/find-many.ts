@@ -7,6 +7,10 @@ import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";
 import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
+import {
+	createDynamoDBOperationStatsCollector,
+	formatDynamoDBOperationStats,
+} from "../dynamodb/ops/operation-stats";
 
 type FindManyInput = {
 	model: string;
@@ -60,11 +64,29 @@ export const createFindManyExecutor = (
 				adapterConfig,
 			});
 
+			const resolveOperationStats = () => {
+				if (!adapterConfig.explainQueryPlans) {
+					return undefined;
+				}
+				return createDynamoDBOperationStatsCollector();
+			};
+			const operationStats = resolveOperationStats();
+
 			if (adapterConfig.explainQueryPlans) {
-				console.log(formatAdapterQueryPlan(plan));
+				console.log(
+					formatAdapterQueryPlan({
+						plan,
+						adapterConfig,
+						getDefaultModelName,
+					}),
+				);
 			}
 
-			return executePlan(plan);
+			const result = await executePlan(plan, { operationStats });
+			if (adapterConfig.explainQueryPlans && operationStats) {
+				console.log(formatDynamoDBOperationStats(operationStats.snapshot()));
+			}
+			return result;
 		};
 	};
 

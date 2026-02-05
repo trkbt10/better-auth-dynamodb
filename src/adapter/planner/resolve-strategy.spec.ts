@@ -19,11 +19,20 @@ const buildSchemaHelpers = () => {
 };
 
 const indexNameResolver = (props: { model: string; field: string }) => {
+	if (props.model === "user" && props.field === "email") {
+		return "user_email_idx";
+	}
+	if (props.model === "user" && props.field === "username") {
+		return "user_username_idx";
+	}
 	if (props.model === "session" && props.field === "token") {
 		return "session_token_idx";
 	}
 	if (props.model === "session" && props.field === "userId") {
 		return "session_userId_idx";
+	}
+	if (props.model === "account" && props.field === "accountId") {
+		return "account_accountId_idx";
 	}
 	if (props.model === "account" && props.field === "userId") {
 		return "account_userId_idx";
@@ -33,6 +42,13 @@ const indexNameResolver = (props: { model: string; field: string }) => {
 	}
 	if (props.model === "verification" && props.field === "identifier") {
 		return "verification_identifier_idx";
+	}
+	return undefined;
+};
+
+const indexKeySchemaResolver = (props: { model: string; indexName: string }) => {
+	if (props.model === "account" && props.indexName === "account_providerId_accountId_idx") {
+		return { partitionKey: "providerId", sortKey: "accountId" };
 	}
 	return undefined;
 };
@@ -87,6 +103,62 @@ describe("resolveBaseStrategy", () => {
 		});
 	});
 
+	test("uses GSI query for user email lookups", () => {
+		const emailField = helpers.getFieldName({ model: "user", field: "email" });
+		const result = resolveBaseStrategy({
+			model: "user",
+			where: [
+				{
+					field: emailField,
+					operator: "eq",
+					value: "a@example.com",
+					connector: "AND",
+					requiresClientFilter: false,
+				},
+			],
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		expect(result).toEqual({
+			kind: "query",
+			key: "gsi",
+			indexName: "user_email_idx",
+		});
+	});
+
+	test("prefers composite index when providerId+accountId are both present", () => {
+		const accountIdField = helpers.getFieldName({ model: "account", field: "accountId" });
+		const providerIdField = helpers.getFieldName({ model: "account", field: "providerId" });
+		const result = resolveBaseStrategy({
+			model: "account",
+			where: [
+				{
+					field: accountIdField,
+					operator: "eq",
+					value: "acc_1",
+					connector: "AND",
+					requiresClientFilter: false,
+				},
+				{
+					field: providerIdField,
+					operator: "eq",
+					value: "github",
+					connector: "AND",
+					requiresClientFilter: false,
+				},
+			],
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		expect(result).toEqual({
+			kind: "query",
+			key: "gsi",
+			indexName: "account_providerId_accountId_idx",
+		});
+	});
+
 	test("uses batch-get for id IN lists", () => {
 		const idField = helpers.getFieldName({ model: "user", field: "id" });
 			const result = resolveBaseStrategy({
@@ -101,7 +173,7 @@ describe("resolveBaseStrategy", () => {
 				},
 				],
 				getFieldName: helpers.getFieldName,
-				adapterConfig: { indexNameResolver },
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 			});
 
 		expect(result).toEqual({ kind: "batch-get" });
@@ -124,7 +196,7 @@ describe("resolveBaseStrategy", () => {
 				},
 				],
 				getFieldName: helpers.getFieldName,
-				adapterConfig: { indexNameResolver },
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 			});
 
 		expect(result).toEqual({
@@ -155,7 +227,7 @@ describe("resolveBaseStrategy", () => {
 				},
 				],
 				getFieldName: helpers.getFieldName,
-				adapterConfig: { indexNameResolver },
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 			});
 
 			expect(result).toEqual({ kind: "scan" });
@@ -183,7 +255,7 @@ describe("resolveBaseStrategy", () => {
 					},
 				],
 				getFieldName: helpers.getFieldName,
-				adapterConfig: { indexNameResolver },
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 			});
 
 			expect(result).toEqual({ kind: "query", key: "pk" });
@@ -203,7 +275,7 @@ describe("resolveBaseStrategy", () => {
 				},
 				],
 				getFieldName: helpers.getFieldName,
-				adapterConfig: { indexNameResolver },
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 			});
 
 		expect(result).toEqual({ kind: "scan" });

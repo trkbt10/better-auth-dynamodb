@@ -70,6 +70,12 @@ type DynamoDBSpecificConfig = {
    * @default false
    */
   explainQueryPlans?: boolean | undefined;
+  /**
+   * Print DynamoDB operation summaries (Scan/Query/BatchGet/etc) to console.
+   *
+   * @default false
+   */
+  explainDynamoOperations?: boolean | undefined;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   indexKeySchemaResolver?:
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
@@ -93,6 +99,7 @@ export type ResolvedDynamoDBAdapterConfig = {
   scanMaxPages?: number | undefined;
   scanPageLimitMode: "throw" | "unbounded";
   explainQueryPlans: boolean;
+  explainDynamoOperations: boolean;
   indexNameResolver: (props: { model: string; field: string }) => string | undefined;
   indexKeySchemaResolver?:
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
@@ -174,6 +181,7 @@ export const dynamodbAdapter = (config: DynamoDBAdapterConfig) => {
     scanMaxPages: config.scanMaxPages,
     scanPageLimitMode: config.scanPageLimitMode ?? "throw",
     explainQueryPlans: config.explainQueryPlans ?? false,
+    explainDynamoOperations: config.explainDynamoOperations ?? false,
     indexNameResolver: config.indexNameResolver,
     indexKeySchemaResolver: config.indexKeySchemaResolver,
     transaction: config.transaction ?? false,

@@ -13,6 +13,10 @@ import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import type { AdapterClientContainer } from "./client-container";
 import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
+import {
+	createDynamoDBOperationStatsCollector,
+	formatDynamoDBOperationStats,
+} from "../dynamodb/ops/operation-stats";
 
 export type CountMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
@@ -47,6 +51,20 @@ export const createCountMethod = (
 		model: string;
 		where?: Where[] | undefined;
 	}) => {
+		const resolveOperationStats = () => {
+			if (!adapterConfig.explainQueryPlans) {
+				return undefined;
+			}
+			return createDynamoDBOperationStatsCollector();
+		};
+		const operationStats = resolveOperationStats();
+		const finalize = (value: number): number => {
+			if (adapterConfig.explainQueryPlans && operationStats) {
+				console.log(formatDynamoDBOperationStats(operationStats.snapshot()));
+			}
+			return value;
+		};
+
 			const plan = buildQueryPlan({
 				model,
 				where,
@@ -59,7 +77,13 @@ export const createCountMethod = (
 				adapterConfig,
 			});
 			if (adapterConfig.explainQueryPlans) {
-				console.log(formatAdapterQueryPlan(plan));
+				console.log(
+					formatAdapterQueryPlan({
+						plan,
+						adapterConfig,
+						getDefaultModelName,
+					}),
+				);
 			}
 
 		if (plan.execution.requiresClientFilter) {
@@ -69,8 +93,8 @@ export const createCountMethod = (
 				getFieldName,
 				getDefaultModelName,
 			});
-			const items = await executePlan(plan);
-			return items.length;
+			const items = await executePlan(plan, { operationStats });
+			return finalize(items.length);
 		}
 
 		if (plan.execution.baseStrategy.kind === "batch-get") {
@@ -80,8 +104,8 @@ export const createCountMethod = (
 				getFieldName,
 				getDefaultModelName,
 			});
-			const items = await executePlan(plan);
-			return items.length;
+			const items = await executePlan(plan, { operationStats });
+			return finalize(items.length);
 		}
 
 		const tableName = resolveTableName({
@@ -116,22 +140,25 @@ export const createCountMethod = (
 				where: keyCondition.remainingWhere,
 				getFieldName,
 			});
-			return queryCount({
-				documentClient,
-				tableName,
-				indexName: keyCondition.indexName,
-				keyConditionExpression: keyCondition.keyConditionExpression,
-				filterExpression: filter.filterExpression,
+				const count = await queryCount({
+					documentClient,
+					tableName,
+					indexName: keyCondition.indexName,
+					keyConditionExpression: keyCondition.keyConditionExpression,
+					filterExpression: filter.filterExpression,
 				expressionAttributeNames: {
 					...keyCondition.expressionAttributeNames,
 					...filter.expressionAttributeNames,
 				},
-				expressionAttributeValues: {
-					...keyCondition.expressionAttributeValues,
-					...filter.expressionAttributeValues,
-				},
-			});
-		}
+					expressionAttributeValues: {
+						...keyCondition.expressionAttributeValues,
+						...filter.expressionAttributeValues,
+					},
+					explainDynamoOperations: adapterConfig.explainDynamoOperations,
+					operationStats,
+				});
+				return finalize(count);
+			}
 
 		const filter = buildFilterExpression({
 			model,
@@ -139,13 +166,16 @@ export const createCountMethod = (
 			getFieldName,
 		});
 		const maxPages = resolveScanMaxPages();
-		return scanCount({
-			documentClient,
-			tableName,
-			filterExpression: filter.filterExpression,
-			expressionAttributeNames: filter.expressionAttributeNames,
-			expressionAttributeValues: filter.expressionAttributeValues,
-			maxPages,
-		});
+			const count = await scanCount({
+				documentClient,
+				tableName,
+				filterExpression: filter.filterExpression,
+				expressionAttributeNames: filter.expressionAttributeNames,
+				expressionAttributeValues: filter.expressionAttributeValues,
+				maxPages,
+				explainDynamoOperations: adapterConfig.explainDynamoOperations,
+				operationStats,
+			});
+			return finalize(count);
+		};
 	};
-};

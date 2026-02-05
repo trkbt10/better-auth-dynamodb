@@ -8,7 +8,13 @@ import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan"
 import type { AdapterClientContainer } from "./client-container";
 import type { PrimaryKeyBatchLoader } from "../adapter/batching/primary-key-batch-loader";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
+import {
+	formatAdapterQueryPlan,
+} from "../adapter/explain/format-query-plan";
+import {
+	createDynamoDBOperationStatsCollector,
+	formatDynamoDBOperationStats,
+} from "../dynamodb/ops/operation-stats";
 
 type FindOneOptions = FindManyOptions & {
 	primaryKeyLoader?: PrimaryKeyBatchLoader | undefined;
@@ -51,9 +57,6 @@ export const createFindOneMethod = (
 									if (value === undefined) {
 										return null;
 									}
-									if (options.adapterConfig.explainQueryPlans) {
-										console.log(`[QueryPlan] model=${model}\n  where:\n    AND ${idFieldName} eq ${JSON.stringify(value)}\n  base: batch-get(pk)\n  joins: (none)`);
-									}
 									const item = await options.primaryKeyLoader.load({ model, key: value });
 									return (item as T | null) ?? null;
 								}
@@ -75,10 +78,27 @@ export const createFindOneMethod = (
 			getFieldName: options.getFieldName,
 			adapterConfig: options.adapterConfig,
 		});
+
+		const resolveOperationStats = () => {
+			if (!options.adapterConfig.explainQueryPlans) {
+				return undefined;
+			}
+			return createDynamoDBOperationStatsCollector();
+		};
+		const operationStats = resolveOperationStats();
 		if (options.adapterConfig.explainQueryPlans) {
-			console.log(formatAdapterQueryPlan(plan));
+			console.log(
+				formatAdapterQueryPlan({
+					plan,
+					adapterConfig: options.adapterConfig,
+					getDefaultModelName: options.getDefaultModelName,
+				}),
+			);
 		}
-		const filteredItems = await executePlan(plan);
+		const filteredItems = await executePlan(plan, { operationStats });
+		if (options.adapterConfig.explainQueryPlans && operationStats) {
+			console.log(formatDynamoDBOperationStats(operationStats.snapshot()));
+		}
 
 		if (filteredItems.length === 0) {
 			return null;

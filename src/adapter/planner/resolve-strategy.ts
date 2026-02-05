@@ -23,22 +23,64 @@ const resolveGsiEntry = (props: {
 	where: NormalizedWhere[];
 	model: string;
 	indexNameResolver: (args: { model: string; field: string }) => string | undefined;
+	indexKeySchemaResolver?:
+		| ((args: { model: string; indexName: string }) => { partitionKey: string; sortKey?: string | undefined } | undefined)
+		| undefined;
 }): { entry: NormalizedWhere; indexName: string } | undefined => {
-	for (const entry of props.where) {
-		if (entry.operator !== "eq") {
-			continue;
+	const hasSortKeyMatch = (sortKey: string | undefined): boolean => {
+		if (!sortKey) {
+			return false;
 		}
-		const indexName = props.indexNameResolver({
-			model: props.model,
-			field: entry.field,
-		});
-		if (!indexName) {
-			continue;
-		}
-		return { entry, indexName };
-	}
+		return props.where.some(
+			(condition) =>
+				condition.operator === "eq" && condition.field === sortKey,
+		);
+	};
 
-	return undefined;
+	const resolveIndexSchema = (indexName: string) => {
+		if (!props.indexKeySchemaResolver) {
+			return undefined;
+		}
+		return props.indexKeySchemaResolver({ model: props.model, indexName });
+	};
+
+	const candidates = props.where
+		.filter((entry) => entry.operator === "eq")
+		.map((entry) => {
+			const indexName = props.indexNameResolver({
+				model: props.model,
+				field: entry.field,
+			});
+			if (!indexName) {
+				return null;
+			}
+			const schema = resolveIndexSchema(indexName);
+			const sortKey = schema?.sortKey;
+			const matchedSortKey = hasSortKeyMatch(sortKey);
+			return {
+				entry,
+				indexName,
+				score: matchedSortKey ? 2 : 1,
+			};
+		})
+		.filter((entry): entry is Exclude<typeof entry, null> => entry !== null);
+
+	const best = candidates.reduce<
+		{ entry: NormalizedWhere; indexName: string; score: number } | undefined
+	>((acc, candidate) => {
+		if (!acc) {
+			return candidate;
+		}
+		if (candidate.score > acc.score) {
+			return candidate;
+		}
+		return acc;
+	}, undefined);
+
+	if (!best) {
+		return undefined;
+	}
+	return { entry: best.entry, indexName: best.indexName };
 };
 
 const resolveGsiInEntry = (props: {
@@ -70,7 +112,7 @@ export const resolveBaseStrategy = (props: {
 	model: string;
 	where: NormalizedWhere[];
 	getFieldName: (args: { model: string; field: string }) => string;
-	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
+	adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver" | "indexKeySchemaResolver">;
 }): ExecutionStrategy => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -97,6 +139,7 @@ export const resolveBaseStrategy = (props: {
 		where: andWhere,
 		model: props.model,
 		indexNameResolver: props.adapterConfig.indexNameResolver,
+		indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
 	});
 	if (gsiEntry) {
 		return { kind: "query", key: "gsi", indexName: gsiEntry.indexName };

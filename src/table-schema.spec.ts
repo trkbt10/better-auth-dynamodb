@@ -25,7 +25,13 @@ describe("createIndexResolversFromSchemas", () => {
 		).toBe("verification_identifier_idx");
 		expect(
 			resolvers.indexNameResolver({ model: "user", field: "email" }),
-		).toBeUndefined();
+		).toBe("user_email_idx");
+		expect(
+			resolvers.indexNameResolver({ model: "user", field: "username" }),
+		).toBe("user_username_idx");
+		expect(
+			resolvers.indexNameResolver({ model: "account", field: "accountId" }),
+		).toBe("account_accountId_idx");
 
 		expect(
 			resolvers.indexKeySchemaResolver({

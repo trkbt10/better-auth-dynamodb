@@ -7,10 +7,10 @@ import {
 	DynamoDBClient,
 	ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
-import { createTables } from "./create-tables";
+import { applyTableSchemas } from "./apply-table-schemas";
 import { multiTableSchemas } from "./table-schema";
 
-describe("createTables", () => {
+describe("applyTableSchemas", () => {
 	test("creates tables with expected GSI definitions", async () => {
 		const client = new DynamoDBClient({
 			region: "us-east-1",
@@ -36,7 +36,7 @@ describe("createTables", () => {
 			tableName: `test_${schema.tableName}`,
 		}));
 
-		await createTables({
+		await applyTableSchemas({
 			client,
 			tables,
 			wait: { maxWaitTime: 2, minDelay: 1 },
@@ -73,9 +73,13 @@ describe("createTables", () => {
 
 	test("keeps schema and indexNameResolver patterns aligned", () => {
 		const expectedIndexes: Record<string, string[]> = {
-			user: [],
+			user: ["user_email_idx", "user_username_idx"],
 			session: ["session_userId_idx", "session_token_idx"],
-			account: ["account_userId_idx", "account_providerId_accountId_idx"],
+			account: [
+				"account_accountId_idx",
+				"account_userId_idx",
+				"account_providerId_accountId_idx",
+			],
 			verification: ["verification_identifier_idx"],
 		};
 

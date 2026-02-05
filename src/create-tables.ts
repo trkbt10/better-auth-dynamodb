@@ -1,70 +1,15 @@
 /**
  * @file DynamoDB table creation helpers for Better Auth adapter.
  */
-import {
-  CreateTableCommand,
-  ListTablesCommand,
-  waitUntilTableExists,
-  type DynamoDBClient,
-} from "@aws-sdk/client-dynamodb";
-import type { TableSchema } from "./dynamodb/types";
-import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
-type WaiterConfiguration = Omit<
-  Parameters<typeof waitUntilTableExists>[0],
-  "client"
->;
-type CreateTablesOptions = {
-  client: DynamoDBClient;
-  tables: TableSchema[];
-  wait?: WaiterConfiguration;
-};
+import type { ApplyTableSchemasOptions } from "./apply-table-schemas";
+import { applyTableSchemas } from "./apply-table-schemas";
 
-const listTableNames = async (client: DynamoDBClient): Promise<string[]> => {
-  const tableNames: string[] = [];
-  const state = { lastEvaluatedTableName: undefined as string | undefined };
-
-  for (;;) {
-    const response = await client.send(
-      new ListTablesCommand({
-        ExclusiveStartTableName: state.lastEvaluatedTableName,
-      }),
-    );
-    tableNames.push(...(response.TableNames ?? []));
-    state.lastEvaluatedTableName = response.LastEvaluatedTableName;
-    if (!state.lastEvaluatedTableName) {
-      break;
-    }
-  }
-
-  return tableNames;
-};
-
-export const createTables = async (options: CreateTablesOptions): Promise<string[]> => {
-  if (!options.client) {
-    throw new DynamoDBAdapterError("MISSING_CLIENT", "DynamoDB createTables requires a DynamoDBClient instance.");
-  }
-
-  const existingTables = await listTableNames(options.client);
-  const waitConfig = options.wait ?? { maxWaitTime: 60, minDelay: 2 };
-  const createdTables: string[] = [];
-
-  for (const table of options.tables) {
-    if (existingTables.includes(table.tableName)) {
-      continue;
-    }
-    const definition = table.tableDefinition;
-    await options.client.send(
-      new CreateTableCommand({
-        TableName: table.tableName,
-        AttributeDefinitions: definition.attributeDefinitions,
-        KeySchema: definition.keySchema,
-        BillingMode: definition.billingMode,
-        GlobalSecondaryIndexes: definition.globalSecondaryIndexes,
-      }),
-    );
-    await waitUntilTableExists({ client: options.client, ...waitConfig }, { TableName: table.tableName });
-    createdTables.push(table.tableName);
-  }
-
-  return createdTables;
+/**
+ * @deprecated Use `applyTableSchemas` instead. This helper now applies GSI schema changes too.
+ */
+export const createTables = async (
+	options: ApplyTableSchemasOptions,
+): Promise<string[]> => {
+	const result = await applyTableSchemas(options);
+	return result.createdTables;
 };

@@ -51,11 +51,30 @@ export const multiTableSchemas: TableSchema[] = [
 	{
 		tableName: "user",
 		tableDefinition: {
-			attributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
+			attributeDefinitions: [
+				{ AttributeName: "id", AttributeType: "S" },
+				{ AttributeName: "email", AttributeType: "S" },
+				{ AttributeName: "username", AttributeType: "S" },
+			],
 			keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
 			billingMode: "PAY_PER_REQUEST",
+			globalSecondaryIndexes: [
+				{
+					IndexName: "user_email_idx",
+					KeySchema: [{ AttributeName: "email", KeyType: "HASH" }],
+					Projection: { ProjectionType: "ALL" },
+				},
+				{
+					IndexName: "user_username_idx",
+					KeySchema: [{ AttributeName: "username", KeyType: "HASH" }],
+					Projection: { ProjectionType: "ALL" },
+				},
+			],
 		},
-		indexMappings: [],
+		indexMappings: [
+			{ indexName: "user_email_idx", partitionKey: "email" },
+			{ indexName: "user_username_idx", partitionKey: "username" },
+		],
 	},
 	{
 		tableName: "session",
@@ -113,6 +132,11 @@ export const multiTableSchemas: TableSchema[] = [
 			billingMode: "PAY_PER_REQUEST",
 			globalSecondaryIndexes: [
 				{
+					IndexName: "account_accountId_idx",
+					KeySchema: [{ AttributeName: "accountId", KeyType: "HASH" }],
+					Projection: { ProjectionType: "ALL" },
+				},
+				{
 					IndexName: "account_userId_idx",
 					KeySchema: [{ AttributeName: "userId", KeyType: "HASH" }],
 					Projection: { ProjectionType: "ALL" },
@@ -128,6 +152,7 @@ export const multiTableSchemas: TableSchema[] = [
 			],
 		},
 		indexMappings: [
+			{ indexName: "account_accountId_idx", partitionKey: "accountId" },
 			{ indexName: "account_userId_idx", partitionKey: "userId" },
 			{
 				indexName: "account_providerId_accountId_idx",

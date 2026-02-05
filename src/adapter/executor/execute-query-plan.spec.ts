@@ -35,11 +35,20 @@ const buildSchemaHelpers = () => {
 };
 
 const indexNameResolver = (props: { model: string; field: string }) => {
+	if (props.model === "user" && props.field === "email") {
+		return "user_email_idx";
+	}
 	if (props.model === "session" && props.field === "userId") {
 		return "session_userId_idx";
 	}
 	if (props.model === "session" && props.field === "token") {
 		return "session_token_idx";
+	}
+	if (props.model === "account" && props.field === "accountId") {
+		return "account_accountId_idx";
+	}
+	if (props.model === "account" && props.field === "providerId") {
+		return "account_providerId_accountId_idx";
 	}
 	if (props.model === "verification" && props.field === "identifier") {
 		return "verification_identifier_idx";
@@ -59,6 +68,12 @@ const indexKeySchemaResolver = (props: { model: string; indexName: string }) => 
 		props.indexName === "verification_identifier_idx"
 	) {
 		return { partitionKey: "identifier", sortKey: "createdAt" };
+	}
+	if (
+		props.model === "account" &&
+		props.indexName === "account_providerId_accountId_idx"
+	) {
+		return { partitionKey: "providerId", sortKey: "accountId" };
 	}
 	return undefined;
 };
@@ -107,7 +122,7 @@ describe("execute query plan", () => {
 			offset: 0,
 			join: undefined,
 			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 		});
 
 		const executePlan = createQueryPlanExecutor({
@@ -122,6 +137,151 @@ describe("execute query plan", () => {
 		const command = sendCalls[0] as QueryCommand;
 		expect(command).toBeInstanceOf(QueryCommand);
 		expect(command.input.IndexName).toBe("session_userId_idx");
+	});
+
+	test("uses QueryCommand with GSI for user email lookups", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const emailField = helpers.getFieldName({ model: "user", field: "email" });
+		const plan = buildQueryPlan({
+			model: "user",
+			where: [
+				{
+					field: emailField,
+					operator: "eq",
+					value: "a@example.com",
+				},
+			],
+			select: undefined,
+			sortBy: undefined,
+			limit: 1,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		const command = sendCalls[0] as QueryCommand;
+		expect(command).toBeInstanceOf(QueryCommand);
+		expect(command.input.IndexName).toBe("user_email_idx");
+	});
+
+	test("uses QueryCommand with GSI for accountId lookups", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const accountIdField = helpers.getFieldName({
+			model: "account",
+			field: "accountId",
+		});
+		const plan = buildQueryPlan({
+			model: "account",
+			where: [
+				{
+					field: accountIdField,
+					operator: "eq",
+					value: "account_1",
+				},
+			],
+			select: undefined,
+			sortBy: undefined,
+			limit: 5,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		const command = sendCalls[0] as QueryCommand;
+		expect(command).toBeInstanceOf(QueryCommand);
+		expect(command.input.IndexName).toBe("account_accountId_idx");
+	});
+
+	test("prefers composite GSI when providerId+accountId are both present", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapterConfig = buildAdapterConfig(documentClient);
+		const accountIdField = helpers.getFieldName({
+			model: "account",
+			field: "accountId",
+		});
+		const providerIdField = helpers.getFieldName({
+			model: "account",
+			field: "providerId",
+		});
+		const plan = buildQueryPlan({
+			model: "account",
+			where: [
+				{
+					field: accountIdField,
+					operator: "eq",
+					value: "account_1",
+				},
+				{
+					field: providerIdField,
+					operator: "eq",
+					value: "github",
+				},
+			],
+			select: undefined,
+			sortBy: undefined,
+			limit: 5,
+			offset: 0,
+			join: undefined,
+			getFieldName: helpers.getFieldName,
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+		});
+
+		const executePlan = createQueryPlanExecutor({
+			documentClient,
+			adapterConfig,
+			getFieldName: helpers.getFieldName,
+			getDefaultModelName: helpers.getDefaultModelName,
+		});
+
+		await executePlan(plan);
+
+		const command = sendCalls[0] as QueryCommand;
+		expect(command).toBeInstanceOf(QueryCommand);
+		expect(command.input.IndexName).toBe("account_providerId_accountId_idx");
+		expect(command.input.KeyConditionExpression).toBe("#pk = :pk AND #sk = :sk");
 	});
 
 	test("uses ScanCommand for OR connector queries", async () => {
@@ -157,7 +317,7 @@ describe("execute query plan", () => {
 			offset: 0,
 			join: undefined,
 			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 		});
 
 		const executePlan = createQueryPlanExecutor({
@@ -206,7 +366,7 @@ describe("execute query plan", () => {
 			offset: 0,
 			join: undefined,
 			getFieldName: helpers.getFieldName,
-			adapterConfig: { indexNameResolver },
+			adapterConfig: { indexNameResolver, indexKeySchemaResolver },
 		});
 
 		const executePlan = createQueryPlanExecutor({

@@ -15,6 +15,7 @@ import { scanItems } from "../../dynamodb/ops/scan";
 import { batchGetItems } from "../../dynamodb/ops/batch-get";
 import type { DynamoDBWhere } from "../../dynamodb/types";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
+import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
 
 const resolveJoinLimit = (props: {
 	relation: JoinPlan["relation"];
@@ -39,20 +40,20 @@ const resolveScanLimit = (props: {
 	return props.limit;
 };
 
-	const resolveScanMaxPages = (props: {
-		adapterConfig: DynamoDBAdapterConfig;
-	}): number => {
-		if (props.adapterConfig.scanPageLimitMode === "unbounded") {
-			return Number.POSITIVE_INFINITY;
-		}
-		if (props.adapterConfig.scanMaxPages === undefined) {
-			throw new DynamoDBAdapterError(
-				"MISSING_SCAN_LIMIT",
-				"Join scan requires scanMaxPages.",
-			);
-		}
-		return props.adapterConfig.scanMaxPages;
-	};
+const resolveScanMaxPages = (props: {
+	adapterConfig: DynamoDBAdapterConfig;
+}): number => {
+	if (props.adapterConfig.scanPageLimitMode === "unbounded") {
+		return Number.POSITIVE_INFINITY;
+	}
+	if (props.adapterConfig.scanMaxPages === undefined) {
+		throw new DynamoDBAdapterError(
+			"MISSING_SCAN_LIMIT",
+			"Join scan requires scanMaxPages.",
+		);
+	}
+	return props.adapterConfig.scanMaxPages;
+};
 
 const extractBaseValues = (props: {
 	items: DynamoDBItem[];
@@ -120,6 +121,7 @@ const fetchByQuery = async (props: {
 	limit?: number | undefined;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
 }): Promise<DynamoDBItem[]> => {
 	const tableName = resolveTableName({
 		model: props.model,
@@ -159,6 +161,8 @@ const fetchByQuery = async (props: {
 			...filter.expressionAttributeValues,
 		},
 		limit: props.limit,
+		explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+		operationStats: props.operationStats,
 	})) as DynamoDBItem[];
 };
 
@@ -171,6 +175,7 @@ const fetchByScan = async (props: {
 	maxPages: number;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
 }): Promise<DynamoDBItem[]> => {
 	const tableName = resolveTableName({
 		model: props.model,
@@ -190,6 +195,8 @@ const fetchByScan = async (props: {
 		expressionAttributeValues: filter.expressionAttributeValues,
 		limit: props.limit,
 		maxPages: props.maxPages,
+		explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+		operationStats: props.operationStats,
 	})) as DynamoDBItem[];
 };
 
@@ -200,6 +207,7 @@ export const executeJoin = async (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
 }): Promise<DynamoDBItem[]> => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -241,6 +249,8 @@ export const executeJoin = async (props: {
 				}),
 				keyField,
 				keys: baseValues,
+				explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+				operationStats: props.operationStats,
 			});
 		}
 		if (strategy.kind === "query") {
@@ -260,6 +270,7 @@ export const executeJoin = async (props: {
 					limit: joinLimit,
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
+					operationStats: props.operationStats,
 				});
 				return [...acc, ...items];
 			}, initial);
@@ -283,6 +294,7 @@ export const executeJoin = async (props: {
 			maxPages,
 			getFieldName: props.getFieldName,
 			getDefaultModelName: props.getDefaultModelName,
+			operationStats: props.operationStats,
 		});
 	};
 

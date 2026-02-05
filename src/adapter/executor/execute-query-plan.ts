@@ -18,6 +18,11 @@ import { scanItems } from "../../dynamodb/ops/scan";
 import { batchGetItems } from "../../dynamodb/ops/batch-get";
 import { resolveTableName } from "../../dynamodb/mapping/resolve-table-name";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
+import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
+
+export type AdapterExecutionContext = {
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
+};
 
 const resolveRequiresClientFilter = (props: {
 	strategy: AdapterQueryPlan["execution"]["baseStrategy"];
@@ -62,20 +67,20 @@ const resolveSortedItems = <T extends Record<string, unknown>>(props: {
 	return applySort(props.items, { sortBy: props.sort });
 };
 
-	const resolveScanMaxPages = (props: {
-		adapterConfig: DynamoDBAdapterConfig;
-	}): number => {
-		if (props.adapterConfig.scanPageLimitMode === "unbounded") {
-			return Number.POSITIVE_INFINITY;
-		}
-		if (props.adapterConfig.scanMaxPages === undefined) {
-			throw new DynamoDBAdapterError(
-				"MISSING_SCAN_LIMIT",
-				"Scan execution requires scanMaxPages.",
-			);
-		}
-		return props.adapterConfig.scanMaxPages;
-	};
+const resolveScanMaxPages = (props: {
+	adapterConfig: DynamoDBAdapterConfig;
+}): number => {
+	if (props.adapterConfig.scanPageLimitMode === "unbounded") {
+		return Number.POSITIVE_INFINITY;
+	}
+	if (props.adapterConfig.scanMaxPages === undefined) {
+		throw new DynamoDBAdapterError(
+			"MISSING_SCAN_LIMIT",
+			"Scan execution requires scanMaxPages.",
+		);
+	}
+	return props.adapterConfig.scanMaxPages;
+};
 
 const toDynamoWhere = (where: NormalizedWhere[]): DynamoDBWhere[] =>
 	where.map((entry) => ({
@@ -107,6 +112,7 @@ const fetchBaseItems = async (props: {
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	operationStats?: DynamoDBOperationStatsCollector | undefined;
 }): Promise<DynamoDBItem[]> => {
 	const where = toDynamoWhere(props.plan.base.where);
 	const tableName = resolveTableName({
@@ -128,13 +134,15 @@ const fetchBaseItems = async (props: {
 		if (keys.length === 0) {
 			return [];
 		}
-		return batchGetItems({
-			documentClient: props.documentClient,
-			tableName,
-			keyField: primaryKeyName,
-			keys,
-		});
-	}
+			return batchGetItems({
+				documentClient: props.documentClient,
+				tableName,
+				keyField: primaryKeyName,
+				keys,
+				explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+				operationStats: props.operationStats,
+			});
+		}
 
 	if (strategy.kind === "multi-query") {
 		const inEntry = props.plan.base.where.find(
@@ -176,26 +184,28 @@ const fetchBaseItems = async (props: {
 					where: keyCondition.remainingWhere,
 					getFieldName: props.getFieldName,
 				});
-				return (await queryItems({
-					documentClient: props.documentClient,
-					tableName,
-					indexName: keyCondition.indexName ?? strategy.indexName,
-					keyConditionExpression: keyCondition.keyConditionExpression,
+					return (await queryItems({
+						documentClient: props.documentClient,
+						tableName,
+						indexName: keyCondition.indexName ?? strategy.indexName,
+						keyConditionExpression: keyCondition.keyConditionExpression,
 					filterExpression: filter.filterExpression,
 					expressionAttributeNames: {
 						...keyCondition.expressionAttributeNames,
 						...filter.expressionAttributeNames,
 					},
-					expressionAttributeValues: {
-						...keyCondition.expressionAttributeValues,
-						...filter.expressionAttributeValues,
-					},
-					limit: perQueryLimit,
-				})) as DynamoDBItem[];
-			}),
-		);
-		return results.flat();
-	}
+						expressionAttributeValues: {
+							...keyCondition.expressionAttributeValues,
+							...filter.expressionAttributeValues,
+						},
+						limit: perQueryLimit,
+						explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+						operationStats: props.operationStats,
+					})) as DynamoDBItem[];
+				}),
+			);
+			return results.flat();
+		}
 
 	if (strategy.kind === "query") {
 		const keyCondition = buildKeyCondition({
@@ -223,11 +233,11 @@ const fetchBaseItems = async (props: {
 		const scanIndexForward = resolveScanIndexForward({
 			serverSort: props.plan.execution.serverSort,
 		});
-		return (await queryItems({
-			documentClient: props.documentClient,
-			tableName,
-			indexName,
-			keyConditionExpression: keyCondition.keyConditionExpression,
+			return (await queryItems({
+				documentClient: props.documentClient,
+				tableName,
+				indexName,
+				keyConditionExpression: keyCondition.keyConditionExpression,
 			filterExpression: filter.filterExpression,
 			expressionAttributeNames: {
 				...keyCondition.expressionAttributeNames,
@@ -236,11 +246,13 @@ const fetchBaseItems = async (props: {
 			expressionAttributeValues: {
 				...keyCondition.expressionAttributeValues,
 				...filter.expressionAttributeValues,
-			},
-			limit: props.plan.execution.fetchLimit,
-			scanIndexForward,
-		})) as DynamoDBItem[];
-	}
+				},
+				limit: props.plan.execution.fetchLimit,
+				scanIndexForward,
+				explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+				operationStats: props.operationStats,
+			})) as DynamoDBItem[];
+		}
 
 	const filter = buildFilterExpression({
 		model: props.plan.base.model,
@@ -248,16 +260,18 @@ const fetchBaseItems = async (props: {
 		getFieldName: props.getFieldName,
 	});
 	const maxPages = resolveScanMaxPages({ adapterConfig: props.adapterConfig });
-	return (await scanItems({
-		documentClient: props.documentClient,
-		tableName,
-		filterExpression: filter.filterExpression,
-		expressionAttributeNames: filter.expressionAttributeNames,
-		expressionAttributeValues: filter.expressionAttributeValues,
-		limit: props.plan.execution.fetchLimit,
-		maxPages,
-	})) as DynamoDBItem[];
-};
+		return (await scanItems({
+			documentClient: props.documentClient,
+			tableName,
+			filterExpression: filter.filterExpression,
+			expressionAttributeNames: filter.expressionAttributeNames,
+			expressionAttributeValues: filter.expressionAttributeValues,
+			limit: props.plan.execution.fetchLimit,
+			maxPages,
+			explainDynamoOperations: props.adapterConfig.explainDynamoOperations,
+			operationStats: props.operationStats,
+		})) as DynamoDBItem[];
+	};
 
 const applyOffsetLimit = <T>(props: {
 	items: T[];
@@ -283,13 +297,17 @@ export const createQueryPlanExecutor = (props: {
 			"createQueryPlanExecutor requires explicit props.",
 		);
 	}
-	return async (plan: AdapterQueryPlan): Promise<DynamoDBItem[]> => {
+	return async (
+		plan: AdapterQueryPlan,
+		context?: AdapterExecutionContext | undefined,
+	): Promise<DynamoDBItem[]> => {
 		const baseItems = await fetchBaseItems({
 			plan,
 			documentClient: props.documentClient,
 			adapterConfig: props.adapterConfig,
 			getFieldName: props.getFieldName,
 			getDefaultModelName: props.getDefaultModelName,
+			operationStats: context?.operationStats,
 		});
 
 		const requiresClientFilter = resolveRequiresClientFilter({
@@ -324,6 +342,7 @@ export const createQueryPlanExecutor = (props: {
 					adapterConfig: props.adapterConfig,
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
+					operationStats: context?.operationStats,
 				});
 			},
 			Promise.resolve(limitedItems),

@@ -92,6 +92,39 @@ describe("batchGetItems", () => {
 		expect(state.callCount).toBe(2);
 	});
 
+	test("retries throttling errors with backoff", async () => {
+		const state = { callCount: 0 };
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => {
+				state.callCount += 1;
+				if (state.callCount === 1) {
+					const error = new Error("throttled");
+					error.name = "ProvisionedThroughputExceededException";
+					throw error;
+				}
+				return {
+					Responses: { users: [{ id: "1" }] },
+				};
+			},
+		});
+
+		const items = await batchGetItems({
+			documentClient,
+			tableName: "users",
+			keyField: "id",
+			keys: ["1"],
+			maxAttempts: 3,
+			backoffBaseDelayMs: 0,
+			backoffMaxDelayMs: 0,
+		});
+
+		expect(items).toEqual([{ id: "1" }]);
+		expect(state.callCount).toBe(2);
+		expect(sendCalls).toHaveLength(2);
+		expect(sendCalls[0]).toBeInstanceOf(BatchGetCommand);
+		expect(sendCalls[1]).toBeInstanceOf(BatchGetCommand);
+	});
+
 	test("throws error after max retry attempts", async () => {
 		const { documentClient } = createDocumentClientStub({
 			respond: async () => ({
