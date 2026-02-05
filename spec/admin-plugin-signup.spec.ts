@@ -5,7 +5,6 @@
  * user that was created in the same transaction via the buffer search,
  * preventing the "Cannot read properties of null (reading 'banned')" error.
  */
-import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins/admin";
 import {
 	BatchGetCommand,
@@ -14,8 +13,9 @@ import {
 	ScanCommand,
 	TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { dynamodbAdapter } from "../src/adapter";
 import { createDocumentClientStub } from "./dynamodb-document-client";
+import { createStatefulDocumentClient } from "./stateful-document-client";
+import { createTestAuth } from "./plugin-test-utils";
 
 const createStubDocumentClient = () =>
 	createDocumentClientStub({
@@ -36,29 +36,14 @@ const createStubDocumentClient = () =>
 		},
 	});
 
-const createTestAdapter = (
-	documentClient: ReturnType<typeof createStubDocumentClient>["documentClient"],
-	transaction: boolean,
-) =>
-	dynamodbAdapter({
-		documentClient,
-		tableNamePrefix: "auth_",
-		transaction,
-		scanMaxPages: 1,
-		indexNameResolver: () => undefined,
-	});
-
 describe("admin plugin signup with transaction", () => {
 	test("signup succeeds when admin plugin checks user.banned within transaction", async () => {
 		const { documentClient, sendCalls } = createStubDocumentClient();
 
-		const auth = betterAuth({
-			database: createTestAdapter(documentClient, true),
+		const auth = createTestAuth({
+			documentClient,
+			transaction: true,
 			plugins: [admin()],
-			emailAndPassword: { enabled: true },
-			secret: "test-secret-at-least-32-characters-long!!",
-			baseURL: "http://localhost:3000",
-			trustedOrigins: ["http://localhost:3000"],
 		});
 
 		const response = await auth.api.signUpEmail({
@@ -102,13 +87,10 @@ describe("admin plugin signup with transaction", () => {
 
 		const capturedUsers: Record<string, unknown>[] = [];
 
-		const auth = betterAuth({
-			database: createTestAdapter(documentClient, true),
+		const auth = createTestAuth({
+			documentClient,
+			transaction: true,
 			plugins: [admin()],
-			emailAndPassword: { enabled: true },
-			secret: "test-secret-at-least-32-characters-long!!",
-			baseURL: "http://localhost:3000",
-			trustedOrigins: ["http://localhost:3000"],
 			databaseHooks: {
 				user: {
 					create: {
@@ -143,78 +125,13 @@ describe("admin plugin signup with transaction", () => {
 });
 
 describe("admin plugin signup without transaction", () => {
-	/**
-	 * When transaction is false, writes go to DynamoDB immediately via
-	 * PutCommand. The stub stores created items so subsequent reads
-	 * (BatchGet/Scan/Query) can find them, mimicking real DynamoDB.
-	 */
-	const createStatefulStubDocumentClient = () => {
-		const store = new Map<string, Record<string, unknown>[]>();
-		const addToStore = (tableName: string, item: Record<string, unknown>) => {
-			const items = store.get(tableName);
-			if (items) {
-				items.push(item);
-			} else {
-				store.set(tableName, [item]);
-			}
-		};
-		const getFromStore = (tableName: string): Record<string, unknown>[] =>
-			store.get(tableName) ?? [];
-
-		return createDocumentClientStub({
-			respond: async (command) => {
-				if (command instanceof PutCommand) {
-					const tableName = command.input.TableName ?? "";
-					const item = command.input.Item ?? {};
-					addToStore(tableName, item as Record<string, unknown>);
-					return {};
-				}
-				if (command instanceof BatchGetCommand) {
-					const requestItems = command.input.RequestItems ?? {};
-					const responses: Record<string, Record<string, unknown>[]> = {};
-					for (const [tableName, request] of Object.entries(requestItems)) {
-						const keys = request.Keys ?? [];
-						const items = getFromStore(tableName);
-						responses[tableName] = items.filter((item) =>
-							keys.some((key) => {
-								const keyEntries = Object.entries(key);
-								return keyEntries.every(
-									([k, v]) => item[k] === v,
-								);
-							}),
-						);
-					}
-					return { Responses: responses };
-				}
-				if (command instanceof ScanCommand) {
-					const tableName = command.input.TableName ?? "";
-					return {
-						Items: getFromStore(tableName),
-						LastEvaluatedKey: undefined,
-					};
-				}
-				if (command instanceof QueryCommand) {
-					const tableName = command.input.TableName ?? "";
-					return {
-						Items: getFromStore(tableName),
-						LastEvaluatedKey: undefined,
-					};
-				}
-				return {};
-			},
-		});
-	};
-
 	test("signup succeeds without transaction mode", async () => {
-		const { documentClient, sendCalls } = createStatefulStubDocumentClient();
+		const { documentClient, sendCalls } = createStatefulDocumentClient();
 
-		const auth = betterAuth({
-			database: createTestAdapter(documentClient, false),
+		const auth = createTestAuth({
+			documentClient,
+			transaction: false,
 			plugins: [admin()],
-			emailAndPassword: { enabled: true },
-			secret: "test-secret-at-least-32-characters-long!!",
-			baseURL: "http://localhost:3000",
-			trustedOrigins: ["http://localhost:3000"],
 		});
 
 		const response = await auth.api.signUpEmail({
@@ -244,17 +161,14 @@ describe("admin plugin signup without transaction", () => {
 	});
 
 	test("user.create.after hook receives valid user data without transaction", async () => {
-		const { documentClient } = createStatefulStubDocumentClient();
+		const { documentClient } = createStatefulDocumentClient();
 
 		const capturedUsers: Record<string, unknown>[] = [];
 
-		const auth = betterAuth({
-			database: createTestAdapter(documentClient, false),
+		const auth = createTestAuth({
+			documentClient,
+			transaction: false,
 			plugins: [admin()],
-			emailAndPassword: { enabled: true },
-			secret: "test-secret-at-least-32-characters-long!!",
-			baseURL: "http://localhost:3000",
-			trustedOrigins: ["http://localhost:3000"],
 			databaseHooks: {
 				user: {
 					create: {
