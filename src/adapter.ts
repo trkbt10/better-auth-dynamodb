@@ -154,6 +154,7 @@ const createDynamoDbCustomizer = (props: {
       findOne: createFindOneMethod(adapterClient, {
         ...sharedOptions,
         primaryKeyLoader,
+        transactionState,
       }),
       findMany: createFindManyMethod(adapterClient, sharedOptions),
       count: createCountMethod(adapterClient, countOptions),

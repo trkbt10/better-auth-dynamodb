@@ -15,9 +15,13 @@ import {
 	createDynamoDBOperationStatsCollector,
 	formatDynamoDBOperationStats,
 } from "../dynamodb/ops/operation-stats";
+import type { DynamoDBTransactionState } from "../dynamodb/ops/transaction";
+import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
+import { searchTransactionBuffer } from "./transaction-buffer-search";
 
 type FindOneOptions = FindManyOptions & {
 	primaryKeyLoader?: PrimaryKeyBatchLoader | undefined;
+	transactionState?: DynamoDBTransactionState | undefined;
 };
 
 export const createFindOneMethod = (
@@ -42,6 +46,22 @@ export const createFindOneMethod = (
 		select?: string[] | undefined;
 		join?: JoinConfig | undefined;
 	}) => {
+		if (options.transactionState) {
+			const tableName = resolveTableName({
+				model,
+				getDefaultModelName: options.getDefaultModelName,
+				config: options.adapterConfig,
+			});
+			const bufferResult = searchTransactionBuffer({
+				transactionState: options.transactionState,
+				tableName,
+				where,
+			});
+			if (bufferResult.found) {
+				return bufferResult.item as T;
+			}
+		}
+
 		if (options.primaryKeyLoader) {
 			if (join === undefined) {
 				if (select === undefined) {

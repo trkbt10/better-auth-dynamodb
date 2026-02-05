@@ -169,6 +169,36 @@ describe("dynamodbAdapter", () => {
 			expect(sendCalls[0]).toBeInstanceOf(BatchGetCommand);
 		});
 
+	test("findOne returns created item within transaction", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({}),
+		});
+		const adapterFactory = dynamodbAdapter({
+			documentClient,
+			tableNamePrefix: "auth_",
+			transaction: true,
+			indexNameResolver,
+		});
+		const adapter = adapterFactory({});
+
+		const result = await adapter.transaction(async (tx) => {
+			const created = await tx.create({
+				model: "user",
+				data: { email: "a@example.com" },
+			});
+			const user = await tx.findOne({
+				model: "user",
+				where: [{ field: "id", value: created.id }],
+			});
+			return user;
+		});
+
+		expect(result).not.toBeNull();
+		expect((result as Record<string, unknown>).email).toBe("a@example.com");
+		expect(sendCalls.length).toBe(1);
+		expect(sendCalls[0]).toBeInstanceOf(TransactWriteCommand);
+	});
+
 	test("uses scan for non-key lookups", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {
