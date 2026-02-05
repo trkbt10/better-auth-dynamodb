@@ -3,6 +3,7 @@
  */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
+import type { DynamoDBOperationStatsCollector } from "./operation-stats";
 export type DynamoDBScanOptions = {
     documentClient: DynamoDBDocumentClient;
     tableName: string;
@@ -11,6 +12,8 @@ export type DynamoDBScanOptions = {
     expressionAttributeValues: Record<string, NativeAttributeValue>;
     limit?: number | undefined;
     maxPages?: number | undefined;
+    explainDynamoOperations?: boolean | undefined;
+    operationStats?: DynamoDBOperationStatsCollector | undefined;
 };
 export declare const scanItems: (options: DynamoDBScanOptions) => Promise<Record<string, NativeAttributeValue>[]>;
 export declare const scanCount: (options: Omit<DynamoDBScanOptions, "limit">) => Promise<number>;

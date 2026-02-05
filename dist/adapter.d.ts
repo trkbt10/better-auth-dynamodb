@@ -18,6 +18,26 @@ type DynamoDBSpecificConfig = {
     tableNamePrefix?: string | undefined;
     tableNameResolver?: DynamoDBTableNameResolver | undefined;
     scanMaxPages?: number | undefined;
+    /**
+     * Controls ScanCommand page limit behavior.
+     * - "throw": enforce scanMaxPages and throw SCAN_PAGE_LIMIT when exceeded.
+     * - "unbounded": ignore scanMaxPages page cap (continues scanning).
+     *
+     * @default "throw"
+     */
+    scanPageLimitMode?: "throw" | "unbounded" | undefined;
+    /**
+     * Print adapter query plans / execution strategy decisions to console.
+     *
+     * @default false
+     */
+    explainQueryPlans?: boolean | undefined;
+    /**
+     * Print DynamoDB operation summaries (Scan/Query/BatchGet/etc) to console.
+     *
+     * @default false
+     */
+    explainDynamoOperations?: boolean | undefined;
     indexNameResolver: (props: {
         model: string;
         field: string;
@@ -41,6 +61,9 @@ export type ResolvedDynamoDBAdapterConfig = {
     tableNamePrefix?: string | undefined;
     tableNameResolver?: DynamoDBTableNameResolver | undefined;
     scanMaxPages?: number | undefined;
+    scanPageLimitMode: "throw" | "unbounded";
+    explainQueryPlans: boolean;
+    explainDynamoOperations: boolean;
     indexNameResolver: (props: {
         model: string;
         field: string;

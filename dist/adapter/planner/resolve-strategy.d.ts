@@ -10,8 +10,7 @@ export declare const resolveBaseStrategy: (props: {
         model: string;
         field: string;
     }) => string;
-    adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
-    hasOrConnector: boolean;
+    adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver" | "indexKeySchemaResolver">;
 }) => ExecutionStrategy;
 export declare const resolveJoinStrategyHint: (props: {
     joinField: string;

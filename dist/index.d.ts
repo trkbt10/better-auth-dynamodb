@@ -3,6 +3,7 @@
  */
 export { dynamodbAdapter } from "./adapter";
 export { DynamoDBAdapterError } from "./dynamodb/errors/errors";
+export { applyTableSchemas, type ApplyTableSchemasOptions } from "./apply-table-schemas";
 export { createTables } from "./create-tables";
 export { createIndexResolversFromSchemas, multiTableSchemas, } from "./table-schema";
 export type { DynamoDBAdapterConfig, DynamoDBTableNameResolver, } from "./adapter";
