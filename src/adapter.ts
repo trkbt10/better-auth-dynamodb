@@ -2,14 +2,17 @@
  * @file DynamoDB adapter implementation for Better Auth.
  */
 import type { BetterAuthOptions } from "@better-auth/core";
+import type { BetterAuthDBSchema } from "@better-auth/core/db";
 import type {
   AdapterFactoryCustomizeAdapterCreator,
   AdapterFactoryOptions,
   DBAdapter,
   DBAdapterDebugLogOption,
   DBAdapterFactoryConfig,
+  DBAdapterSchemaCreation,
 } from "@better-auth/core/db/adapter";
 import { createAdapterFactory } from "@better-auth/core/db/adapter";
+import { generateSchemaCode } from "./schema-codegen";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 import { createCountMethod } from "./adapter-methods/count";
@@ -162,6 +165,21 @@ const createDynamoDbCustomizer = (props: {
       updateMany: createUpdateManyMethod(adapterClient, updateOptions),
       delete: createDeleteMethod(adapterClient, deleteOptions),
       deleteMany: createDeleteManyMethod(adapterClient, deleteOptions),
+      createSchema: async (props: {
+        file?: string;
+        tables: BetterAuthDBSchema;
+      }): Promise<DBAdapterSchemaCreation> => {
+        const code = generateSchemaCode({
+          tables: props.tables,
+          file: props.file,
+          tableNamePrefix: adapterConfig.tableNamePrefix,
+        });
+        return {
+          code,
+          path: props.file ?? "dynamodb-tables.ts",
+          overwrite: true,
+        };
+      },
     };
   };
 };
