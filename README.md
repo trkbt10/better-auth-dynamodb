@@ -15,6 +15,7 @@
 ## ✨ Features
 
 - 🚀 **Full DynamoDB Support** — Native AWS SDK v3 integration
+- 🔌 **Plugin Support** — Automatic schema generation for Better Auth plugins
 - 📊 **Optimized GSI Configurations** — Multi-table schema with smart indexing
 - ⚡ **Transaction Support** — Atomic operations for data consistency
 - 🎯 **Flexible Table Naming** — Prefix or custom resolver patterns
@@ -50,7 +51,7 @@ bun add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/li
 
 ```bash
 # specific tag/release
-npm install github:trkbt10/better-auth-dynamodb#v1.0.0
+npm install github:trkbt10/better-auth-dynamodb#v0.2.0
 
 # specific branch
 npm install github:trkbt10/better-auth-dynamodb#main
@@ -60,11 +61,13 @@ npm install github:trkbt10/better-auth-dynamodb#main
 
 ## 🚀 Quick Start
 
+### Basic Setup (Core Tables Only)
+
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { betterAuth } from "better-auth";
-import { createIndexResolversFromSchemas, dynamodbAdapter, multiTableSchemas } from "better-auth-dynamodb";
+import { coreTableSchemas, createIndexResolversFromSchemas, dynamodbAdapter } from "better-auth-dynamodb";
 
 // 1. Create DynamoDB client
 const client = new DynamoDBClient({ region: "us-east-1" });
@@ -72,8 +75,8 @@ const documentClient = DynamoDBDocumentClient.from(client, {
   marshallOptions: { removeUndefinedValues: true },
 });
 
-// 2. Create index resolvers from provided schemas
-const { indexNameResolver, indexKeySchemaResolver } = createIndexResolversFromSchemas(multiTableSchemas);
+// 2. Create index resolvers from core schemas
+const { indexNameResolver, indexKeySchemaResolver } = createIndexResolversFromSchemas(coreTableSchemas);
 
 // 3. Configure the adapter
 const adapter = dynamodbAdapter({
@@ -87,7 +90,50 @@ const adapter = dynamodbAdapter({
 
 // 4. Use with Better Auth
 const auth = betterAuth({
-  database: { adapter },
+  database: adapter,
+});
+```
+
+### With Plugins
+
+Use `generateTableSchemas()` to automatically generate schemas that match your Better Auth configuration including plugins:
+
+```ts
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { betterAuth } from "better-auth";
+import { twoFactor, organization } from "better-auth/plugins";
+import { createIndexResolversFromSchemas, dynamodbAdapter, generateTableSchemas } from "better-auth-dynamodb";
+
+// 1. Define your Better Auth config (used for both schema generation and auth setup)
+const plugins = [twoFactor(), organization()];
+
+// 2. Generate schemas matching your Better Auth config
+const schemas = generateTableSchemas({ plugins });
+
+// 3. Create index resolvers from generated schemas
+const { indexNameResolver, indexKeySchemaResolver } = createIndexResolversFromSchemas(schemas);
+
+// 4. Create DynamoDB client
+const client = new DynamoDBClient({ region: "us-east-1" });
+const documentClient = DynamoDBDocumentClient.from(client, {
+  marshallOptions: { removeUndefinedValues: true },
+});
+
+// 5. Configure the adapter
+const adapter = dynamodbAdapter({
+  documentClient,
+  tableNamePrefix: "better_auth_",
+  scanMaxPages: 25,
+  indexNameResolver,
+  indexKeySchemaResolver,
+  transaction: true,
+});
+
+// 6. Use with Better Auth
+const auth = betterAuth({
+  database: adapter,
+  plugins,
 });
 ```
 
@@ -95,16 +141,37 @@ const auth = betterAuth({
 
 Before using the adapter, create the required DynamoDB tables.
 
-### Using the built-in helper
+### Using the built-in helper (Core Tables)
 
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { applyTableSchemas, multiTableSchemas } from "better-auth-dynamodb";
+import { applyTableSchemas, coreTableSchemas } from "better-auth-dynamodb";
 
 const client = new DynamoDBClient({ region: "us-east-1" });
 
 // Apply table name prefix to schemas
-const tables = multiTableSchemas.map((schema) => ({
+const tables = coreTableSchemas.map((schema) => ({
+  ...schema,
+  tableName: `better_auth_${schema.tableName}`,
+}));
+
+await applyTableSchemas({ client, tables });
+```
+
+### Using the built-in helper (With Plugins)
+
+```ts
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { twoFactor, organization } from "better-auth/plugins";
+import { applyTableSchemas, generateTableSchemas } from "better-auth-dynamodb";
+
+const client = new DynamoDBClient({ region: "us-east-1" });
+
+// Generate schemas from Better Auth config
+const schemas = generateTableSchemas({ plugins: [twoFactor(), organization()] });
+
+// Apply table name prefix
+const tables = schemas.map((schema) => ({
   ...schema,
   tableName: `better_auth_${schema.tableName}`,
 }));
@@ -141,6 +208,18 @@ export class BetterAuthTablesStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    this.userTable.addGlobalSecondaryIndex({
+      indexName: "user_email_idx",
+      partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    this.userTable.addGlobalSecondaryIndex({
+      indexName: "user_username_idx",
+      partitionKey: { name: "username", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Session table
     this.sessionTable = new dynamodb.Table(this, "SessionTable", {
       tableName: `${tablePrefix}session`,
@@ -169,6 +248,12 @@ export class BetterAuthTablesStack extends cdk.Stack {
       partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.accountTable.addGlobalSecondaryIndex({
+      indexName: "account_accountId_idx",
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
 
     this.accountTable.addGlobalSecondaryIndex({
@@ -230,6 +315,7 @@ const betterAuthDynamoDBPolicy = new iam.PolicyStatement({
     sessionTable.tableArn,
     accountTable.tableArn,
     verificationTable.tableArn,
+    `${userTable.tableArn}/index/*`,
     `${sessionTable.tableArn}/index/*`,
     `${accountTable.tableArn}/index/*`,
     `${verificationTable.tableArn}/index/*`,
@@ -264,14 +350,14 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 | `dynamodb:BatchWriteItem`     | Batch write operations                        |
 | `dynamodb:TransactWriteItems` | Transactional writes (if `transaction: true`) |
 
-### Table Schema Overview
+### Table Schema Overview (coreTableSchemas)
 
-| Table          | Primary Key | Global Secondary Indexes                  |
-| -------------- | ----------- | ----------------------------------------- |
-| `user`         | `id` (HASH) | —                                         |
-| `session`      | `id` (HASH) | `userId + createdAt`, `token + createdAt` |
-| `account`      | `id` (HASH) | `userId`, `providerId + accountId`        |
-| `verification` | `id` (HASH) | `identifier + createdAt`                  |
+| Table          | Primary Key | Global Secondary Indexes                              |
+| -------------- | ----------- | ----------------------------------------------------- |
+| `user`         | `id` (HASH) | `email`, `username`                                   |
+| `session`      | `id` (HASH) | `userId + createdAt`, `token + createdAt`             |
+| `account`      | `id` (HASH) | `accountId`, `userId`, `providerId + accountId`       |
+| `verification` | `id` (HASH) | `identifier + createdAt`                              |
 
 ## ⚙️ Configuration
 
@@ -292,10 +378,11 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 
 ### Query & Index Options
 
-| Option                   | Type                                                 | Default | Description                                        |
-| ------------------------ | ---------------------------------------------------- | ------- | -------------------------------------------------- |
-| `indexKeySchemaResolver` | `(props) => { partitionKey, sortKey? } \| undefined` | —       | Resolves GSI key schemas for composite key queries |
-| `scanMaxPages`           | `number`                                             | —       | Maximum scan pages before aborting                 |
+| Option                   | Type                                                 | Default   | Description                                        |
+| ------------------------ | ---------------------------------------------------- | --------- | -------------------------------------------------- |
+| `indexKeySchemaResolver` | `(props) => { partitionKey, sortKey? } \| undefined` | —         | Resolves GSI key schemas for composite key queries |
+| `scanMaxPages`           | `number`                                             | —         | Maximum scan pages before aborting                 |
+| `scanPageLimitMode`      | `"throw" \| "unbounded"`                             | `"throw"` | Behavior when scan exceeds page limit              |
 
 ### ID Generation
 
@@ -315,10 +402,47 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 
 ### Other Options
 
-| Option        | Type                      | Default | Description                       |
-| ------------- | ------------------------- | ------- | --------------------------------- |
-| `transaction` | `boolean`                 | `false` | Enable adapter-layer transactions |
-| `debugLogs`   | `DBAdapterDebugLogOption` | —       | Better Auth debug logging options |
+| Option                    | Type                      | Default | Description                                      |
+| ------------------------- | ------------------------- | ------- | ------------------------------------------------ |
+| `transaction`             | `boolean`                 | `false` | Enable adapter-layer transactions                |
+| `debugLogs`               | `DBAdapterDebugLogOption` | —       | Better Auth debug logging options                |
+| `explainQueryPlans`       | `boolean`                 | `false` | Print query plan decisions to console            |
+| `explainDynamoOperations` | `boolean`                 | `false` | Print DynamoDB operation summaries to console    |
+
+### Schema Generation Options
+
+Options for `generateTableSchemas()`:
+
+| Option                        | Type                              | Default | Description                                              |
+| ----------------------------- | --------------------------------- | ------- | -------------------------------------------------------- |
+| `compositeIndexes`            | `Record<string, CompositeIndex[]>` | —       | Additional composite indexes (PK + SK) per table          |
+| `disableAutoCompositeIndexes` | `boolean`                         | `false` | Disable default composite indexes                         |
+| `indexReferences`             | `boolean`                         | `true`  | Auto-create GSI for foreign key fields (references)       |
+| `disableSchemaExtensions`     | `boolean`                         | `false` | Disable default schema extensions for plugin fixes        |
+| `schemaExtensions`            | `SchemaExtensions`                | —       | Additional schema extensions for plugin field adjustments |
+
+<details>
+<summary>📘 Custom Composite Indexes Example</summary>
+
+```ts
+import { generateTableSchemas } from "better-auth-dynamodb";
+
+const schemas = generateTableSchemas(
+  { plugins: [...] },
+  {
+    compositeIndexes: {
+      session: [
+        { partitionKey: "userId", sortKey: "expiresAt" },
+      ],
+      customTable: [
+        { partitionKey: "tenantId", sortKey: "createdAt" },
+      ],
+    },
+  }
+);
+```
+
+</details>
 
 ## 📝 Behavior Notes
 
@@ -374,9 +498,15 @@ const adapter = dynamodbAdapter({
 
 ```ts
 const indexNameResolver = ({ model, field }) => {
-  const indexes = {
+  const indexes: Record<string, Record<string, string>> = {
+    user: { email: "user_email_idx", username: "user_username_idx" },
     session: { userId: "session_userId_idx", token: "session_token_idx" },
-    account: { userId: "account_userId_idx", providerId: "account_providerId_accountId_idx" },
+    account: {
+      accountId: "account_accountId_idx",
+      userId: "account_userId_idx",
+      providerId: "account_providerId_accountId_idx",
+    },
+    verification: { identifier: "verification_identifier_idx" },
   };
   return indexes[model]?.[field];
 };
