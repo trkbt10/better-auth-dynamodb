@@ -6,36 +6,47 @@
 import { betterAuth } from "better-auth";
 import { organization } from "better-auth/plugins/organization";
 import { admin } from "better-auth/plugins/admin";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { dynamodbAdapter } from "../src/adapter";
 import { createStatefulDocumentClient } from "./stateful-document-client";
 import { signUpAndGetHeaders } from "./plugin-test-utils";
+import {
+	generateTableSchemas,
+	createIndexResolversFromSchemas,
+} from "../src/table-schemas";
+
+const createPlugins = (teams: boolean) => [
+	organization({
+		allowUserToCreateOrganization: true,
+		teams: teams ? { enabled: true } : undefined,
+	}),
+	admin(),
+];
 
 const createAuth = (
 	documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
 	transaction: boolean,
 	teams = false,
-) =>
-	betterAuth({
+) => {
+	const plugins = createPlugins(teams);
+	const schemas = generateTableSchemas({ plugins });
+	const resolvers = createIndexResolversFromSchemas(schemas);
+
+	return betterAuth({
 		database: dynamodbAdapter({
 			documentClient,
 			tableNamePrefix: "auth_",
 			transaction,
 			scanMaxPages: 1,
-			indexNameResolver: () => undefined,
+			...resolvers,
 		}),
-		plugins: [
-			organization({
-				allowUserToCreateOrganization: true,
-				teams: teams ? { enabled: true } : undefined,
-			}),
-			admin(),
-		],
+		plugins,
 		emailAndPassword: { enabled: true },
 		secret: "test-secret-at-least-32-characters-long!!",
 		baseURL: "http://localhost:3000",
 		trustedOrigins: ["http://localhost:3000"],
 	});
+};
 
 describe("Organization plugin (transaction: true)", () => {
 	test("creates an organization", async () => {
@@ -168,8 +179,8 @@ describe("Organization plugin (transaction: false)", () => {
 		expect(putCommands.length).toBeGreaterThan(0);
 	});
 
-	test("lists organizations after creation", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+	test("lists organizations using QueryCommand with member_userId GSI", async () => {
+		const { documentClient, sendCalls } = createStatefulDocumentClient();
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -183,11 +194,22 @@ describe("Organization plugin (transaction: false)", () => {
 			headers,
 		});
 
+		// Clear sendCalls to track only listOrganizations
+		sendCalls.length = 0;
+
 		const list = await auth.api.listOrganizations({ headers });
 
 		expect(Array.isArray(list)).toBe(true);
 		expect(list.length).toBeGreaterThanOrEqual(1);
 		expect(list.some((o) => o.slug === "org-two")).toBe(true);
+
+		// Verify QueryCommand was used with member_userId_idx GSI
+		const queryCalls = sendCalls.filter((c) => c instanceof QueryCommand);
+		const memberQuery = queryCalls.find((c) => {
+			const cmd = c as QueryCommand;
+			return cmd.input.IndexName === "member_userId_idx";
+		});
+		expect(memberQuery).toBeDefined();
 	});
 
 	test("creates an invitation without transaction", async () => {

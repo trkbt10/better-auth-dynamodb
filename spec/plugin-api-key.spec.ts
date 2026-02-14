@@ -3,10 +3,18 @@
  */
 import { betterAuth } from "better-auth";
 import { apiKey } from "better-auth/plugins";
-import { PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { dynamodbAdapter } from "../src/adapter";
 import { createStatefulDocumentClient } from "./stateful-document-client";
 import { signUpAndGetHeaders } from "./plugin-test-utils";
+import {
+	generateTableSchemas,
+	createIndexResolversFromSchemas,
+} from "../src/table-schemas";
+
+const plugins = [apiKey()];
+const schemas = generateTableSchemas({ plugins });
+const resolvers = createIndexResolversFromSchemas(schemas);
 
 const createAuth = (
 	documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
@@ -18,9 +26,9 @@ const createAuth = (
 			tableNamePrefix: "auth_",
 			transaction,
 			scanMaxPages: 1,
-			indexNameResolver: () => undefined,
+			...resolvers,
 		}),
-		plugins: [apiKey()],
+		plugins,
 		emailAndPassword: { enabled: true },
 		secret: "test-secret-at-least-32-characters-long!!",
 		baseURL: "http://localhost:3000",
@@ -104,8 +112,8 @@ describe("API Key plugin (transaction: false)", () => {
 		expect(putCommands.length).toBeGreaterThan(0);
 	});
 
-	test("lists API keys after creation", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+	test("lists API keys using QueryCommand with apiKey_userId GSI", async () => {
+		const { documentClient, sendCalls } = createStatefulDocumentClient();
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -119,10 +127,21 @@ describe("API Key plugin (transaction: false)", () => {
 			headers,
 		});
 
+		// Clear sendCalls to track only listApiKeys
+		sendCalls.length = 0;
+
 		const list = await auth.api.listApiKeys({ headers });
 
 		expect(Array.isArray(list)).toBe(true);
 		expect(list.length).toBeGreaterThanOrEqual(1);
 		expect(list.some((k) => k.name === "key-1")).toBe(true);
+
+		// Verify QueryCommand was used with apikey_userId_idx GSI (table name is lowercase)
+		const queryCalls = sendCalls.filter((c) => c instanceof QueryCommand);
+		const apiKeyQuery = queryCalls.find((c) => {
+			const cmd = c as QueryCommand;
+			return cmd.input.IndexName === "apikey_userId_idx";
+		});
+		expect(apiKeyQuery).toBeDefined();
 	});
 });
