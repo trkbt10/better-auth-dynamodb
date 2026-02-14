@@ -1,15 +1,13 @@
 /**
- * @file Tests for table schema helpers.
+ * @file Tests for index resolver utilities.
  */
-import {
-	createIndexResolversFromSchemas,
-	multiTableSchemas,
-} from "./table-schema";
-import type { TableSchema } from "./dynamodb/types";
+import { createIndexResolversFromSchemas } from "./resolvers";
+import { coreTableSchemas } from "./core-schemas";
+import type { TableSchema } from "../dynamodb/types";
 
 describe("createIndexResolversFromSchemas", () => {
-	test("resolves index names and key schemas from multi-table schemas", () => {
-		const resolvers = createIndexResolversFromSchemas(multiTableSchemas);
+	test("resolves index names and key schemas from core table schemas", () => {
+		const resolvers = createIndexResolversFromSchemas(coreTableSchemas);
 
 		expect(
 			resolvers.indexNameResolver({ model: "session", field: "userId" }),

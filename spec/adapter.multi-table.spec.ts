@@ -1,9 +1,8 @@
 /**
  * @file Official Better Auth adapter test suite for DynamoDB adapter (multi-table).
  */
-import { createIndexResolversFromSchemas, dynamodbAdapter } from "../src/index";
+import { createIndexResolversFromSchemas, dynamodbAdapter, coreTableSchemas } from "../src/index";
 import { applyTableSchemas } from "../src/apply-table-schemas";
-import { multiTableSchemas } from "../src/table-schema";
 import { testAdapter } from "./better-auth-adapter-test";
 import {
 	buildTestConfig,
@@ -20,13 +19,13 @@ const testConfig = buildTestConfig({
 
 const { client, documentClient } = createTestClients(testConfig);
 const tableNamePrefix = "better_auth_test_";
-const tables = multiTableSchemas.map((schema) => ({
+const tables = coreTableSchemas.map((schema) => ({
 	...schema,
 	tableName: `${tableNamePrefix}${schema.tableName}`,
 }));
 const tableNames = tableNamesFromSchemas(tables);
 const { indexNameResolver, indexKeySchemaResolver } =
-	createIndexResolversFromSchemas(multiTableSchemas);
+	createIndexResolversFromSchemas(coreTableSchemas);
 
 const adapterFactory = dynamodbAdapter({
 	documentClient,

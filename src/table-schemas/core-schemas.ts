@@ -1,53 +1,28 @@
 /**
- * @file DynamoDB table schema definitions for Better Auth adapter.
+ * @file Core DynamoDB table schemas provided by this adapter.
+ *
+ * These are hand-crafted table definitions for Better Auth's core tables
+ * (user, session, account, verification) with DynamoDB-optimized GSI configurations.
+ *
+ * Use these schemas when:
+ * - You want explicit control over table structure
+ * - You're not using Better Auth plugins that require additional tables
+ * - You prefer hand-crafted definitions over auto-generation
+ *
+ * For plugin support, use `generateTableSchemas()` from `./from-better-auth.ts` instead.
  */
-import type { IndexMapping, IndexResolverBundle, TableSchema } from "./dynamodb/types";
+import type { TableSchema } from "../dynamodb/types";
 
-export const createIndexResolversFromSchemas = (
-	schemas: TableSchema[],
-): IndexResolverBundle => {
-	if (schemas.length === 0) {
-		throw new Error("index resolver creation requires table schemas.");
-	}
-	const partitionIndexMap = new Map<string, IndexMapping>();
-	const indexNameMap = new Map<string, IndexMapping>();
-	for (const schema of schemas) {
-		for (const mapping of schema.indexMappings) {
-			const partitionKey = `${schema.tableName}:${mapping.partitionKey}`;
-			if (partitionIndexMap.has(partitionKey)) {
-				throw new Error(
-					`Duplicate partition key mapping for ${schema.tableName}.${mapping.partitionKey}.`,
-				);
-			}
-			partitionIndexMap.set(partitionKey, mapping);
-
-			const indexKey = `${schema.tableName}:${mapping.indexName}`;
-			if (indexNameMap.has(indexKey)) {
-				throw new Error(
-					`Duplicate index name mapping for ${schema.tableName}.${mapping.indexName}.`,
-				);
-			}
-			indexNameMap.set(indexKey, mapping);
-		}
-	}
-
-	return {
-		indexNameResolver: ({ model, field }) =>
-			partitionIndexMap.get(`${model}:${field}`)?.indexName,
-		indexKeySchemaResolver: ({ model, indexName }) => {
-			const mapping = indexNameMap.get(`${model}:${indexName}`);
-			if (!mapping) {
-				return undefined;
-			}
-			return {
-				partitionKey: mapping.partitionKey,
-				sortKey: mapping.sortKey,
-			};
-		},
-	};
-};
-
-export const multiTableSchemas: TableSchema[] = [
+/**
+ * Core table schemas for Better Auth with DynamoDB-optimized GSIs.
+ *
+ * Includes:
+ * - user: email, username GSIs
+ * - session: userId+createdAt, token+createdAt composite GSIs
+ * - account: accountId, userId, providerId+accountId GSIs
+ * - verification: identifier+createdAt composite GSI
+ */
+export const coreTableSchemas: TableSchema[] = [
 	{
 		tableName: "user",
 		tableDefinition: {
@@ -191,3 +166,8 @@ export const multiTableSchemas: TableSchema[] = [
 		],
 	},
 ];
+
+/**
+ * @deprecated Use `coreTableSchemas` instead. Will be removed in a future version.
+ */
+export const multiTableSchemas = coreTableSchemas;

@@ -129,7 +129,7 @@ describe("applyTableSchemas", () => {
 		const result = await applyTableSchemas({
 			client,
 			tables: [schema],
-			wait: { maxWaitTime: 1, minDelay: 0 },
+			wait: { maxWaitTime: 2, minDelay: 1 },
 		});
 
 		expect(result.createdTables).toEqual(["test_users"]);
@@ -170,7 +170,7 @@ describe("applyTableSchemas", () => {
 		const result = await applyTableSchemas({
 			client,
 			tables: [schema],
-			wait: { maxWaitTime: 1, minDelay: 0 },
+			wait: { maxWaitTime: 2, minDelay: 1 },
 		});
 
 		expect(result.createdTables).toEqual([]);
@@ -234,7 +234,7 @@ describe("applyTableSchemas", () => {
 		const result = await applyTableSchemas({
 			client,
 			tables: [schema],
-			wait: { maxWaitTime: 1, minDelay: 0 },
+			wait: { maxWaitTime: 2, minDelay: 1 },
 		});
 
 		expect(result.updatedTables).toEqual(["test_account"]);

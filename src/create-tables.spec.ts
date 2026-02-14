@@ -8,7 +8,7 @@ import {
 	ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
 import { applyTableSchemas } from "./apply-table-schemas";
-import { multiTableSchemas } from "./table-schema";
+import { coreTableSchemas } from "./table-schemas";
 
 describe("applyTableSchemas", () => {
 	test("creates tables with expected GSI definitions", async () => {
@@ -31,7 +31,7 @@ describe("applyTableSchemas", () => {
 			return {};
 		};
 
-		const tables = multiTableSchemas.map((schema) => ({
+		const tables = coreTableSchemas.map((schema) => ({
 			...schema,
 			tableName: `test_${schema.tableName}`,
 		}));
@@ -83,7 +83,7 @@ describe("applyTableSchemas", () => {
 			verification: ["verification_identifier_idx"],
 		};
 
-		for (const schema of multiTableSchemas) {
+		for (const schema of coreTableSchemas) {
 			const indexes = schema.tableDefinition.globalSecondaryIndexes?.map(
 				(index) => index.IndexName,
 			) ?? [];
