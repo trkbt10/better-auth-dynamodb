@@ -64,7 +64,6 @@ const createAdapter = (options: BetterAuthOptions) => {
 /**
  * Tests of the basic CRUD suite that fail on adapter behavior; shared by the
  * normal suite and the joins suite, which reuses the same test bodies.
- * Every test whose name mentions incrementOne / consumeOne stays enabled.
  */
 const basicSuiteDisabledTests = {
 	// ValidationException: Invalid attribute value type (null written to the GSI key attribute nullableReference)
@@ -91,12 +90,7 @@ const { execute } = await testAdapter({
 				"transaction - should rollback failing transaction": true,
 			},
 		}),
-		authFlowTestSuite({
-			disableTests: {
-				// ValidationException: Filter Expression can only contain non-primary key attributes: Primary key attribute: id
-				"should reset password with a single-use token": true,
-			},
-		}),
+		authFlowTestSuite(),
 		joinsTestSuite({ disableTests: basicSuiteDisabledTests }),
 		caseInsensitiveTestSuite({
 			disableTests: {

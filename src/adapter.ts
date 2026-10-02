@@ -15,17 +15,20 @@ import { createAdapterFactory } from "@better-auth/core/db/adapter";
 import { generateSchemaCode } from "./schema-codegen";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
+import { createConsumeOneMethod } from "./adapter-methods/consume-one";
 import { createCountMethod } from "./adapter-methods/count";
 import { createCreateMethod } from "./adapter-methods/create";
 import { createDeleteManyMethod } from "./adapter-methods/delete-many";
 import { createDeleteMethod } from "./adapter-methods/delete";
 import { createFindManyMethod } from "./adapter-methods/find-many";
 import { createFindOneMethod } from "./adapter-methods/find-one";
+import { createIncrementOneMethod } from "./adapter-methods/increment-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { createPrimaryKeyBatchLoader } from "./adapter/batching/primary-key-batch-loader";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
 import { createTransactionState, executeTransaction, type DynamoDBTransactionState } from "./dynamodb/ops/transaction";
+import type { AtomicMethodOptions } from "./adapter-methods/atomic-write";
 import type { AdapterClientContainer } from "./adapter-methods/client-container";
 import type { CountMethodOptions } from "./adapter-methods/count";
 import type { CreateMethodOptions } from "./adapter-methods/create";
@@ -151,6 +154,10 @@ const createDynamoDbCustomizer = (props: {
       getDefaultModelName,
       transactionState,
     };
+    const atomicOptions: AtomicMethodOptions = {
+      ...sharedOptions,
+      transactionState,
+    };
 
     return {
       create: createCreateMethod(adapterClient, createOptions),
@@ -165,6 +172,12 @@ const createDynamoDbCustomizer = (props: {
       updateMany: createUpdateManyMethod(adapterClient, updateOptions),
       delete: createDeleteMethod(adapterClient, deleteOptions),
       deleteMany: createDeleteManyMethod(adapterClient, deleteOptions),
+      // Better Auth >= 1.6 consumes single-use rows and mutates guarded counters
+      // through these two methods. Its fallback for adapters without them is a
+      // snapshot-guarded deleteMany / updateMany, which cannot be atomic here:
+      // DynamoDB only makes a write conditional inside the keyed request itself.
+      consumeOne: createConsumeOneMethod(adapterClient, atomicOptions),
+      incrementOne: createIncrementOneMethod(adapterClient, atomicOptions),
       createSchema: async (props: {
         file?: string;
         tables: BetterAuthDBSchema;
