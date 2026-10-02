@@ -24,11 +24,12 @@
 
 ## 📋 Requirements
 
-| Requirement  | Version        |
-| ------------ | -------------- |
-| Node.js      | 18+            |
-| AWS DynamoDB | Local or Cloud |
-| AWS SDK      | v3             |
+| Requirement  | Version                                                    |
+| ------------ | ---------------------------------------------------------- |
+| Node.js      | 18+                                                        |
+| AWS DynamoDB | Local or Cloud                                             |
+| AWS SDK      | v3                                                         |
+| Better Auth  | 1.x — the test suite runs against 1.7 (see Local Development) |
 
 ## 📦 Installation
 
@@ -325,7 +326,7 @@ const betterAuthDynamoDBPolicy = new iam.PolicyStatement({
 // If using transactions (transaction: true in adapter config)
 const transactionPolicy = new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ["dynamodb:TransactWriteItems"],
+  actions: ["dynamodb:TransactWriteItems", "dynamodb:ConditionCheckItem"],
   resources: [userTable.tableArn, sessionTable.tableArn, accountTable.tableArn, verificationTable.tableArn],
 });
 
@@ -349,6 +350,7 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 | `dynamodb:BatchGetItem`       | Batch read operations                         |
 | `dynamodb:BatchWriteItem`     | Batch write operations                        |
 | `dynamodb:TransactWriteItems` | Transactional writes (if `transaction: true`) |
+| `dynamodb:ConditionCheckItem` | Guards on unchanged rows inside a transaction (if `transaction: true`) |
 
 ### Table Schema Overview (coreTableSchemas)
 
@@ -372,9 +374,9 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 
 | Option              | Type                            | Default | Description                                                  |
 | ------------------- | ------------------------------- | ------- | ------------------------------------------------------------ |
-| `tableNamePrefix`   | `string`                        | —       | Prefix for all table names (e.g., `"auth_"` → `auth_user`)   |
+| `tableNamePrefix`   | `string`                        | —       | Prefix for all table names (e.g., `"auth_"` → `auth_user`); a custom `modelName` is honored |
 | `tableNameResolver` | `(modelName: string) => string` | —       | Custom function for table name resolution                    |
-| `usePlural`         | `boolean`                       | `false` | Use pluralized model names (e.g., `users` instead of `user`) |
+| `usePlural`         | `boolean`                       | `false` | Passed to Better Auth's adapter factory. Table and index names are not pluralized |
 
 ### Query & Index Options
 
@@ -404,7 +406,7 @@ lambdaFunction.addToRolePolicy(transactionPolicy);
 
 | Option                    | Type                      | Default | Description                                      |
 | ------------------------- | ------------------------- | ------- | ------------------------------------------------ |
-| `transaction`             | `boolean`                 | `false` | Enable adapter-layer transactions                |
+| `transaction`             | `boolean`                 | `false` | Enable adapter-layer transactions (see Behavior Notes) |
 | `debugLogs`               | `DBAdapterDebugLogOption` | —       | Better Auth debug logging options                |
 | `explainQueryPlans`       | `boolean`                 | `false` | Print query plan decisions to console            |
 | `explainDynamoOperations` | `boolean`                 | `false` | Print DynamoDB operation summaries to console    |
@@ -469,6 +471,75 @@ const adapter = dynamodbAdapter({
 ### Scan Protection
 
 Table scans are guarded by `scanMaxPages`. Queries that cannot use an index will throw if `scanMaxPages` is not configured.
+
+### Atomic Methods (`consumeOne` / `incrementOne`)
+
+Better Auth 1.6 and later consumes single-use rows (verification tokens, device codes) with `consumeOne` and mutates guarded counters (database rate limiting, team seats, two-factor lockouts) with `incrementOne`. The adapter implements both natively as one keyed, conditional DynamoDB write:
+
+| Method         | DynamoDB request                                                                   | Result                                              |
+| -------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `consumeOne`   | `DeleteItem` with the where clause as `ConditionExpression`, `ReturnValues=ALL_OLD` | The deleted row, or `null` when no row matched      |
+| `incrementOne` | `UpdateItem` with the where clause as `ConditionExpression`, `ReturnValues=ALL_NEW` | The updated row, or `null` when the guard missed    |
+
+- Concurrent `consumeOne` calls for one row hand it to exactly one caller. Concurrent `incrementOne` calls never lose an increment and never pass a guard such as `count < max`.
+- `incrementOne` adds the delta inside DynamoDB. A counter that is absent or `null` counts as `0`; any other non-numeric value is rejected with `INVALID_UPDATE`.
+- A where clause that selects the row by `id` is resolved without a query: `consumeOne` is a single request when DynamoDB can evaluate the whole where clause, and `incrementOne` reads the row with a strongly consistent `GetItem` first.
+- Any other where clause is resolved through an index or scan first, like `update` and `delete`. That read is eventually consistent, so the conditional write is what decides. When its condition fails, the row is read again by its key, strongly consistently: a row that is gone or no longer matches is skipped (and `null` is returned when no other row matches), a row that still matches is written again from its current values.
+- A row that keeps changing under the write is retried up to 5 times; then the method throws `ATOMIC_WRITE_CONTENTION` instead of reporting "no row matched".
+- With `transaction: true`, the write is buffered like every other write of the transaction and the returned row is the one read inside it. The commit requires the attributes that row was read with to be unchanged; otherwise it fails with `TransactionCanceledException`.
+
+### Single-Row Writes
+
+- `create` fails with `DUPLICATE_PRIMARY_KEY` when the primary key is already taken (`PutItem` with `attribute_not_exists`). It never replaces a row. Better Auth relies on this to make a deterministic id a first-writer-wins gate.
+- `update` only changes a row that still exists (`attribute_exists`). If the row was deleted after it was read, the update affects nothing instead of creating a partial row.
+- `update` assigns the given attributes, each as a whole value: a number is set, not advanced, and a list or JSON field is replaced, not merged. Use `incrementOne` for counters.
+- `deleteMany` returns the number of rows it actually deleted.
+- Uniqueness of a field other than `id` is not enforced: DynamoDB has no unique constraint on non-key attributes.
+
+### Transactions
+
+With `transaction: true`, `adapter.transaction()` buffers its writes and commits them in one `TransactWriteItems` request.
+
+- Reads inside the transaction (`findOne`, `findMany`, `count`, joins) see the writes made earlier in it.
+- Several writes to one row are folded into one operation, as `TransactWriteItems` allows a single operation per item.
+- A transaction writes at most 100 rows (the `TransactWriteItems` limit); a larger one fails with `TRANSACTION_LIMIT` when it commits.
+- Nothing is written when the callback throws. When a condition fails at commit (a created id is taken, an updated row is gone, a row read by `consumeOne` / `incrementOne` changed), DynamoDB cancels the whole request with `TransactionCanceledException`.
+- Rows other transactions write in the meantime are not locked: isolation is optimistic and enforced at commit.
+
+### Where Clauses
+
+- `eq null` matches a row whose field is `NULL` or absent; `ne null` matches a row whose field holds a value.
+- `mode: "insensitive"` and `ends_with` have no DynamoDB counterpart. They are evaluated in memory after the rows are read, so they cannot use an index for that entry.
+- A where clause may name a key attribute outside the key condition (a repeated key, a range on an index sort key). DynamoDB does not accept those in a `FilterExpression`; the adapter evaluates them in memory.
+
+### Null Values and Indexes
+
+DynamoDB cannot store `NULL` in an attribute that a global secondary index uses as its key. A `null` value of such a field (for example a nullable foreign key) is written as a missing attribute, which keeps the row out of that index, and is read back as `null`.
+
+### Table Names and `modelName`
+
+With `tableNamePrefix`, a table is named `prefix + modelName`, where `modelName` is the model name of the Better Auth schema (`user: { modelName: "app_user" }` → `auth_app_user`). `generateTableSchemas` uses the same name. `tableNameResolver` receives the default model name (`user`).
+
+### Upgrading from 0.2
+
+0.3 follows Better Auth 1.7 and changes behavior in a few places. Check these before upgrading an existing deployment:
+
+| Change | Affects you when | What to do |
+| ------ | ---------------- | ---------- |
+| With `tableNamePrefix`, tables are named after the schema's `modelName` | You set a custom `modelName` and created the tables under the default name (`auth_user`) | Rename or re-create the tables, or map the names yourself with `tableNameResolver` |
+| Default composite indexes also apply to models with a custom `modelName` | You set a custom `modelName` for `session`, `account` or `verification` and use `generateTableSchemas` | Re-run `applyTableSchemas` (or deploy the regenerated schema) so the indexes exist before the adapter queries them |
+| Index resolvers are asked with the schema model name (`user`), also with `usePlural` | You use `usePlural` with hand-written resolvers keyed by the plural name (`users`) | Key the resolvers by the schema model name |
+| A custom-named `session` gets the composite indexes instead of the single-field `<name>_userId_idx` / `<name>_token_idx` | Same as above | The old single-field indexes are no longer used; `applyTableSchemas` does not delete them, remove them yourself |
+| `create` rejects a primary key that is taken | Code relied on `create` replacing a row with the same `id` | Use `update` |
+| `update` assigns the given attributes as whole values | Code advanced a counter with `update({ count: count + 1 })` and relied on concurrent calls adding up, or relied on list / JSON fields being merged | Use `incrementOne` for counters (Better Auth 1.6+ does) |
+| `findMany` applies `select` | Code read fields it did not select | Select them |
+| `eq null` also matches a missing attribute; `mode: "insensitive"` is honored | Queries with those conditions return different rows, and they are evaluated in memory, so they need `scanMaxPages` when no other condition can use an index | Review such queries |
+| A null value of an index key attribute is stored as a missing attribute | Rows are read by other clients that expect a `NULL` attribute | Treat the missing attribute as null |
+| Filtered queries and scans read full pages | `scanMaxPages` now counts pages of up to 1 MB instead of single evaluated items | Revisit a `scanMaxPages` that was tuned to the old behavior |
+| `indexNameResolver` is called for every field of a model | A hand-written resolver throws for fields it does not know | Return `undefined` for them |
+| `dynamodb:GetItem` is used (it was listed as required before, but not called) | The IAM policy omits it | Add the action; `consumeOne` / `incrementOne` need it |
+| Transactions allow 100 rows instead of 25, checked at commit | Code relied on `TRANSACTION_LIMIT` being thrown inside the callback at 25 writes | Expect it from `adapter.transaction()` |
+| `dynamodb:ConditionCheckItem` | You use `transaction: true` | Add the action to the IAM policy |
 
 ## 💡 Examples
 
@@ -536,12 +607,17 @@ Tests use DynamoDB Local by default.
 # Start DynamoDB Local (via Docker)
 docker run -p 8000:8000 amazon/dynamodb-local
 
+# ... or without Docker, from the DynamoDB Local download (needs Java 17+)
+java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar -inMemory -port 8000
+
 # Run tests
 bun run test
 
 # Run tests with coverage
 bun run test:cov
 ```
+
+The suite includes Better Auth's official adapter tests (`@better-auth/test-utils`: normal, transactions, auth-flow, joins, case-insensitive and uuid suites) and runs them, like every spec that depends on conditional writes, against DynamoDB Local. `tools/plugin-docs.spec.ts` fetches the Better Auth documentation and needs network access.
 
 ## 📄 License
 
