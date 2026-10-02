@@ -619,6 +619,43 @@ bun run test:cov
 
 The suite includes Better Auth's official adapter tests (`@better-auth/test-utils`: normal, transactions, auth-flow, joins, case-insensitive and uuid suites) and runs them, like every spec that depends on conditional writes, against DynamoDB Local. `tools/plugin-docs.spec.ts` fetches the Better Auth documentation and needs network access.
 
+### Chaos Specs
+
+DynamoDB Local answers every read from the latest write, in the order the requests arrive, and never fails. A real table does none of that: index reads lag, concurrent requests interleave, requests are throttled and responses get lost. `spec/chaos/` runs the adapter against a cluster that does all of it. The cluster is the in-memory fake (itself verified against DynamoDB Local by `spec/stateful-document-client.spec.ts`), extended with:
+
+| Fault | What happens |
+| ----- | ------------ |
+| Replication lag | An index read, or a table read without `ConsistentRead`, is answered from an earlier state; each item can lag on its own, so a read may show a combination the table never held |
+| Interleaving | Concurrent operations advance one request at a time, in a random order |
+| Rejected requests | A request fails before it is applied (throttling); a transaction is cancelled by a conflict |
+| Lost responses | A write is applied but its response is lost, and optionally sent again as the AWS SDK retries |
+| Short pages | A Query / Scan page ends after one or two evaluated items, so the rest has to be fetched through `LastEvaluatedKey` |
+| Partial batches | A `BatchGetItem` hands some of its keys back as `UnprocessedKeys` |
+
+Every decision is drawn from a seed. Each scenario runs concurrent callers under nine fault profiles (from interleaving alone to everything at once) and checks, for every write the cluster applied, the invariants the adapter promises:
+
+- a single-use row is handed out at most once, and only while it matches the where clause;
+- a guarded counter moves by exactly the requested delta and never past its guard;
+- a create never replaces a row; an update never resurrects one or changes what it did not assign; list and JSON values are written whole;
+- a transaction is applied in full or not at all, reads its own writes, and takes a fixed id at most once;
+- a read of rows nobody changes is exact: every row once, in the requested order;
+- through Better Auth: a reset token changes the password at most once, and a database rate limit admits at most `max`.
+
+What the specs do not assert is freshness: a row written a moment ago may be missing from an index read, on the simulated cluster as on DynamoDB. The specs for the tooling itself (`spec/chaos/chaos-cluster.spec.ts`) check that each fault really happens, and every profile fails its run if the faults it names were never injected.
+
+```bash
+# part of `bun run test` (40 seeds per profile; needs no DynamoDB Local)
+bunx vitest --run spec/chaos
+
+# more seeds (CHAOS_FLOW_RUNS for the Better Auth flows, which hash passwords)
+CHAOS_RUNS=1000 CHAOS_FLOW_RUNS=60 bunx vitest --run spec/chaos --testTimeout=600000
+
+# replay the seed a failure reported
+CHAOS_SEED=1234 bunx vitest --run spec/chaos
+```
+
+A failing run prints its seed, the broken invariants and the requests in the order they were answered.
+
 ## 📄 License
 
 This is free and unencumbered software released into the public domain.
