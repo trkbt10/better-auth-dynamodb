@@ -23,6 +23,13 @@ const createPlugins = (teams: boolean) => [
 	admin(),
 ];
 
+// The fake is given the tables the adapter's index resolvers are derived from.
+const createClient = (teams = false) =>
+	createStatefulDocumentClient({
+		tableSchemas: generateTableSchemas({ plugins: createPlugins(teams) }),
+		tableNamePrefix: "auth_",
+	});
+
 const createAuth = (
 	documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
 	transaction: boolean,
@@ -50,7 +57,7 @@ const createAuth = (
 
 describe("Organization plugin (transaction: true)", () => {
 	test("creates an organization", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient();
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -71,7 +78,7 @@ describe("Organization plugin (transaction: true)", () => {
 	});
 
 	test("lists organizations after creation", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient();
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -93,7 +100,7 @@ describe("Organization plugin (transaction: true)", () => {
 	});
 
 	test("creates an invitation", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient();
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -123,7 +130,7 @@ describe("Organization plugin (transaction: true)", () => {
 	});
 
 	test("creates a team within organization", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient(true);
 		const auth = createAuth(documentClient, true, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -154,7 +161,7 @@ describe("Organization plugin (transaction: true)", () => {
 
 describe("Organization plugin (transaction: false)", () => {
 	test("creates an organization", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createClient();
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -180,7 +187,7 @@ describe("Organization plugin (transaction: false)", () => {
 	});
 
 	test("lists organizations using QueryCommand with member_userId GSI", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createClient();
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -213,7 +220,7 @@ describe("Organization plugin (transaction: false)", () => {
 	});
 
 	test("creates an invitation without transaction", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient();
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -242,7 +249,7 @@ describe("Organization plugin (transaction: false)", () => {
 	});
 
 	test("creates a team within organization without transaction", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createClient(true);
 		const auth = createAuth(documentClient, false, true);
 
 		const { headers } = await signUpAndGetHeaders(

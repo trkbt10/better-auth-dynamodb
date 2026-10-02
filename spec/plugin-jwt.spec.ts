@@ -74,7 +74,7 @@ describe("jwt plugin", () => {
 
 	describe("adapter integration", () => {
 		it("generates JWT token for authenticated user", async () => {
-			const { documentClient } = createStatefulDocumentClient();
+			const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 			const auth = createAuth(documentClient, true);
 
 			const { headers } = await signUpAndGetHeaders(

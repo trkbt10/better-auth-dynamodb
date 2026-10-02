@@ -2,10 +2,14 @@
  * @file DynamoDB document client stub for unit tests.
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import {
+	DynamoDBDocumentClient,
+	type TranslateConfig,
+} from "@aws-sdk/lib-dynamodb";
 
 export const createDocumentClientStub = (props: {
 	respond: (command: unknown, callIndex: number) => Promise<unknown>;
+	translateConfig?: TranslateConfig | undefined;
 }): {
 	documentClient: DynamoDBDocumentClient;
 	sendCalls: unknown[];
@@ -17,7 +21,10 @@ export const createDocumentClientStub = (props: {
 			secretAccessKey: "test-secret-key",
 		},
 	});
-	const documentClient = DynamoDBDocumentClient.from(client);
+	const documentClient = DynamoDBDocumentClient.from(
+		client,
+		props.translateConfig,
+	);
 	const sendCalls: unknown[] = [];
 	const state = { callIndex: 0 };
 

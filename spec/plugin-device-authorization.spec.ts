@@ -94,7 +94,7 @@ describe("deviceAuthorization plugin", () => {
 
 describe("deviceAuthorization plugin (adapter integration)", () => {
 	it("creates device code request", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, true);
 
 		const result = await auth.api.deviceCode({
@@ -108,7 +108,7 @@ describe("deviceAuthorization plugin (adapter integration)", () => {
 	});
 
 	it("stores device code in database", async () => {
-		const { documentClient, store } = createStatefulDocumentClient();
+		const { documentClient, store } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		await auth.api.deviceCode({

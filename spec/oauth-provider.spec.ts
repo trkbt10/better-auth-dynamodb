@@ -274,16 +274,25 @@ describe("oauthProvider plugin (external package)", () => {
 	});
 
 	describe("adapter integration", () => {
+		const createPlugins = () => [
+			jwt(),
+			oauthProvider({
+				loginPage: "/login",
+				consentPage: "/consent",
+			}),
+		];
+
+		// The fake is given the tables the adapter's index resolvers are derived from.
+		const createClient = () =>
+			createStatefulDocumentClient({
+				tableSchemas: generateTableSchemas({ plugins: createPlugins() }),
+				tableNamePrefix: "auth_",
+			});
+
 		const createAuthWithGSI = (
 			documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
 		) => {
-			const plugins = [
-				jwt(),
-				oauthProvider({
-					loginPage: "/login",
-					consentPage: "/consent",
-				}),
-			];
+			const plugins = createPlugins();
 			const schemas = generateTableSchemas({ plugins });
 			const resolvers = createIndexResolversFromSchemas(schemas);
 
@@ -304,7 +313,7 @@ describe("oauthProvider plugin (external package)", () => {
 		};
 
 		it("user signup works with oauthProvider plugin and proper resolvers", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createClient();
 			const auth = createAuthWithGSI(documentClient);
 
 			await auth.api.signUpEmail({
@@ -321,7 +330,7 @@ describe("oauthProvider plugin (external package)", () => {
 		});
 
 		it("signin uses QueryCommand for email lookup with proper resolvers", async () => {
-			const { documentClient, sendCalls } = createStatefulDocumentClient();
+			const { documentClient, sendCalls } = createClient();
 			const auth = createAuthWithGSI(documentClient);
 
 			await auth.api.signUpEmail({

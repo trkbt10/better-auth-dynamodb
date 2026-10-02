@@ -37,7 +37,7 @@ const createAuth = (
 
 describe("API Key plugin (transaction: true)", () => {
 	test("creates an API key for authenticated user", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -57,7 +57,7 @@ describe("API Key plugin (transaction: true)", () => {
 	});
 
 	test("lists API keys after creation", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -81,7 +81,7 @@ describe("API Key plugin (transaction: true)", () => {
 
 describe("API Key plugin (transaction: false)", () => {
 	test("creates an API key for authenticated user", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -113,7 +113,7 @@ describe("API Key plugin (transaction: false)", () => {
 	});
 
 	test("lists API keys using QueryCommand with apikey_referenceId GSI", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(

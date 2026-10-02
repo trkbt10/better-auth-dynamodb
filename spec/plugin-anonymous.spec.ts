@@ -58,7 +58,7 @@ describe("anonymous plugin", () => {
 
 	describe("adapter integration", () => {
 		it("creates anonymous user", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 			const auth = createAuth(documentClient, true);
 
 			const result = await auth.api.signInAnonymous();

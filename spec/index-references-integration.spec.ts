@@ -25,6 +25,13 @@ import { requireTotpEnrollment, signUpAndGetHeaders } from "./plugin-test-utils"
 
 describe("indexReferences integration with adapter", () => {
 	describe("deviceAuthorization plugin (schema extension)", () => {
+		// The fake is given the tables the adapter's index resolvers are derived from.
+		const createClient = () =>
+			createStatefulDocumentClient({
+				tableSchemas: generateTableSchemas({ plugins: [deviceAuthorization()] }),
+				tableNamePrefix: "auth_",
+			});
+
 		const createAuthWithGSI = (
 			documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
 		) => {
@@ -75,7 +82,7 @@ describe("indexReferences integration with adapter", () => {
 		});
 
 		it("creates device code and stores in database", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createClient();
 			const auth = createAuthWithGSI(documentClient);
 
 			await auth.api.deviceCode({
@@ -90,6 +97,13 @@ describe("indexReferences integration with adapter", () => {
 	});
 
 	describe("twoFactor plugin (native references)", () => {
+		// The fake is given the tables the adapter's index resolvers are derived from.
+		const createClient = () =>
+			createStatefulDocumentClient({
+				tableSchemas: generateTableSchemas({ plugins: [twoFactor()] }),
+				tableNamePrefix: "auth_",
+			});
+
 		const createAuthWithGSI = (
 			documentClient: ReturnType<typeof createStatefulDocumentClient>["documentClient"],
 		) => {
@@ -140,7 +154,7 @@ describe("indexReferences integration with adapter", () => {
 		});
 
 		it("enables two-factor and stores in database", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createClient();
 			const auth = createAuthWithGSI(documentClient);
 
 			const { headers } = await signUpAndGetHeaders(
@@ -200,10 +214,12 @@ describe("indexReferences integration with adapter", () => {
 
 	describe("query strategy verification", () => {
 		it("uses QueryCommand when GSI is available for user.email lookup", async () => {
-			const { documentClient, sendCalls } = createStatefulDocumentClient();
-
 			const schemas = generateTableSchemas({});
 			const resolvers = createIndexResolversFromSchemas(schemas);
+			const { documentClient, sendCalls } = createStatefulDocumentClient({
+				tableSchemas: schemas,
+				tableNamePrefix: "auth_",
+			});
 
 			const auth = betterAuth({
 				database: dynamodbAdapter({
@@ -321,12 +337,14 @@ describe("indexReferences integration with adapter", () => {
 		});
 
 		it("uses QueryCommand for username lookup with proper resolvers", async () => {
-			const { documentClient, sendCalls, store } = createStatefulDocumentClient();
-
 			const schemas = generateTableSchemas({
 				plugins: [username()],
 			});
 			const resolvers = createIndexResolversFromSchemas(schemas);
+			const { documentClient, sendCalls, store } = createStatefulDocumentClient({
+				tableSchemas: schemas,
+				tableNamePrefix: "auth_",
+			});
 
 			const auth = betterAuth({
 				database: dynamodbAdapter({
@@ -407,12 +425,14 @@ describe("indexReferences integration with adapter", () => {
 		});
 
 		it("stores phoneNumber in user record", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
-
 			const schemas = generateTableSchemas({
 				plugins: [phoneNumber({ sendOTP: async () => {} })],
 			});
 			const resolvers = createIndexResolversFromSchemas(schemas);
+			const { documentClient, store } = createStatefulDocumentClient({
+				tableSchemas: schemas,
+				tableNamePrefix: "auth_",
+			});
 
 			const auth = betterAuth({
 				database: dynamodbAdapter({

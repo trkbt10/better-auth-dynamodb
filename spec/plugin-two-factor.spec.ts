@@ -42,7 +42,7 @@ const createAuth = (
 
 describe("Two-Factor plugin (transaction: true)", () => {
 	test("enables two-factor authentication for user", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, true);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -66,7 +66,7 @@ describe("Two-Factor plugin (transaction: true)", () => {
 	});
 
 	test("signup succeeds with two-factor plugin enabled", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, true);
 
 		const { user } = await signUpAndGetHeaders(
@@ -82,7 +82,7 @@ describe("Two-Factor plugin (transaction: true)", () => {
 
 describe("Two-Factor plugin (transaction: false)", () => {
 	test("enables two-factor authentication for user", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(
@@ -116,7 +116,7 @@ describe("Two-Factor plugin (transaction: false)", () => {
 	});
 
 	test("signup succeeds with two-factor plugin enabled", async () => {
-		const { documentClient } = createStatefulDocumentClient();
+		const { documentClient } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		const { user } = await signUpAndGetHeaders(
@@ -130,7 +130,7 @@ describe("Two-Factor plugin (transaction: false)", () => {
 	});
 
 	test("uses QueryCommand with userId GSI when enabling two-factor", async () => {
-		const { documentClient, sendCalls } = createStatefulDocumentClient();
+		const { documentClient, sendCalls } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 		const auth = createAuth(documentClient, false);
 
 		const { headers } = await signUpAndGetHeaders(

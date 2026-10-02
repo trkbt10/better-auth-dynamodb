@@ -71,7 +71,7 @@ describe("phoneNumber plugin", () => {
 
 	describe("adapter integration", () => {
 		it("user signup works with phoneNumber plugin enabled", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 			const auth = createAuth(documentClient, true);
 
 			await auth.api.signUpEmail({

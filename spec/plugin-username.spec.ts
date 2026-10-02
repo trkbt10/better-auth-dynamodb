@@ -69,7 +69,7 @@ describe("username plugin", () => {
 
 	describe("adapter integration", () => {
 		it("creates user with username", async () => {
-			const { documentClient, store } = createStatefulDocumentClient();
+			const { documentClient, store } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 			const auth = createAuth(documentClient, true);
 
 			await auth.api.signUpEmail({
@@ -87,7 +87,7 @@ describe("username plugin", () => {
 		});
 
 		it("uses QueryCommand with user_username_idx GSI for signInUsername", async () => {
-			const { documentClient, sendCalls } = createStatefulDocumentClient();
+			const { documentClient, sendCalls } = createStatefulDocumentClient({ tableSchemas: schemas, tableNamePrefix: "auth_" });
 			const auth = createAuth(documentClient, false);
 
 			// Create user with username first
