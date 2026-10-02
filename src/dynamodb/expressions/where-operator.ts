@@ -114,8 +114,16 @@ const buildInExpression = (props: {
 		props.appendValue(entry as NativeAttributeValue),
 	);
 	const inExpression = `${props.fieldToken} IN (${placeholders.join(", ")})`;
+	// A null in the list follows the rule for `eq null`: missing or NULL.
+	const includesNull = valuesList.includes(null);
 	if (props.negate) {
+		if (includesNull) {
+			return `(attribute_exists(${props.fieldToken}) AND NOT (${inExpression}))`;
+		}
 		return `NOT (${inExpression})`;
+	}
+	if (includesNull) {
+		return `(attribute_not_exists(${props.fieldToken}) OR ${inExpression})`;
 	}
 	return inExpression;
 };
@@ -126,7 +134,9 @@ const evaluateIn = (props: {
 	negate: boolean;
 }): boolean => {
 	const valuesList = resolveValueList(props.value);
-	const isIncluded = valuesList.some((entry) => entry === props.fieldValue);
+	const isIncluded = valuesList.some((entry) =>
+		evaluateEquals({ fieldValue: props.fieldValue, value: entry }),
+	);
 	if (props.negate) {
 		return !isIncluded;
 	}
@@ -182,11 +192,45 @@ const buildEqualsExpression = (ctx: FilterExpressionContext): string => {
 	return `${ctx.fieldToken} = ${valueToken}`;
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	return Object.getPrototypeOf(value) === Object.prototype;
+};
+
+// DynamoDB compares lists and maps by content, so the in-memory evaluation
+// does too: a JSON or array field equals a value with the same content.
+const hasSameContent = (left: unknown, right: unknown): boolean => {
+	if (left === right) {
+		return true;
+	}
+	if (Array.isArray(left) && Array.isArray(right)) {
+		if (left.length !== right.length) {
+			return false;
+		}
+		return left.every((entry, index) => hasSameContent(entry, right[index]));
+	}
+	if (isPlainObject(left) && isPlainObject(right)) {
+		const leftKeys = Object.keys(left);
+		if (leftKeys.length !== Object.keys(right).length) {
+			return false;
+		}
+		return leftKeys.every((key) => {
+			if (!(key in right)) {
+				return false;
+			}
+			return hasSameContent(left[key], right[key]);
+		});
+	}
+	return false;
+};
+
 const evaluateEquals = (ctx: EvaluationContext): boolean => {
 	if (ctx.value === null) {
 		return isAbsent(ctx.fieldValue);
 	}
-	return ctx.fieldValue === ctx.value;
+	return hasSameContent(ctx.fieldValue, ctx.value);
 };
 
 const buildNotEqualsExpression = (ctx: FilterExpressionContext): string => {
@@ -201,7 +245,7 @@ const evaluateNotEquals = (ctx: EvaluationContext): boolean => {
 	if (ctx.value === null) {
 		return !isAbsent(ctx.fieldValue);
 	}
-	return ctx.fieldValue !== ctx.value;
+	return !hasSameContent(ctx.fieldValue, ctx.value);
 };
 
 const HANDLERS: Record<WhereOperator, OperatorHandler> = {

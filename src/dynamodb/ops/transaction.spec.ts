@@ -45,28 +45,42 @@ describe("transaction helpers", () => {
 		return command.input.TransactItems;
 	};
 
-	test("enforces the transaction item limit", () => {
-		const state = createTransactionState();
-		for (let index = 0; index < TRANSACTION_ITEM_LIMIT; index += 1) {
-			bufferTransactionCreate(state, {
-				tableName: "users",
-				keyField: "id",
-				item: { id: `user-${index}` },
-			});
-		}
+	test("enforces the transaction item limit over the operations it sends", async () => {
+		const fill = (count: number): DynamoDBTransactionState => {
+			const state = createTransactionState();
+			for (let index = 0; index < count; index += 1) {
+				bufferTransactionCreate(state, {
+					tableName: "users",
+					keyField: "id",
+					item: { id: `user-${index}` },
+				});
+			}
+			return state;
+		};
+		const overflowing = fill(TRANSACTION_ITEM_LIMIT + 1);
+		const cancelledOut = fill(TRANSACTION_ITEM_LIMIT + 1);
+		bufferTransactionWrite(cancelledOut, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-0" },
+			next: null,
+		});
 
-		const error = captureError(() =>
-			bufferTransactionCreate(state, {
-				tableName: "users",
-				keyField: "id",
-				item: { id: "overflow" },
-			}),
-		);
+		const captureAsyncError = async (fn: () => Promise<unknown>) => {
+			try {
+				await fn();
+			} catch (error) {
+				return error;
+			}
+			return undefined;
+		};
+		const error = await captureAsyncError(() => commit(overflowing));
 
 		expect(error).toBeInstanceOf(DynamoDBAdapterError);
 		if (error instanceof DynamoDBAdapterError) {
 			expect(error.code).toBe("TRANSACTION_LIMIT");
 		}
+		expect(await committedItems(cancelledOut)).toHaveLength(TRANSACTION_ITEM_LIMIT);
 	});
 
 	test("sends nothing for an empty transaction", async () => {

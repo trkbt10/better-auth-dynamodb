@@ -302,6 +302,52 @@ describe("buildFilterExpression", () => {
 });
 
 describe("where entry evaluation", () => {
+	const createAppendValue = () => {
+		const state = { index: 0 };
+		return () => {
+			state.index += 1;
+			return `:v${state.index}`;
+		};
+	};
+
+	test("compares lists and maps by content", () => {
+		const eq = getOperatorHandler("eq");
+		const ne = getOperatorHandler("ne");
+
+		expect(eq.evaluate({ fieldValue: ["a", "b"], value: ["a", "b"] })).toBe(true);
+		expect(eq.evaluate({ fieldValue: ["a", "b"], value: ["b", "a"] })).toBe(false);
+		expect(eq.evaluate({ fieldValue: { a: 1, b: [2] }, value: { b: [2], a: 1 } })).toBe(true);
+		expect(eq.evaluate({ fieldValue: { a: 1 }, value: { a: 1, b: 2 } })).toBe(false);
+		expect(ne.evaluate({ fieldValue: { a: 1 }, value: { a: 1 } })).toBe(false);
+		expect(ne.evaluate({ fieldValue: { a: 1 }, value: { a: 2 } })).toBe(true);
+	});
+
+	test("treats a null in an IN list as missing or NULL", () => {
+		const includes = getOperatorHandler("in");
+		const excludes = getOperatorHandler("not_in");
+		const list = [null, "a"];
+
+		expect(
+			includes.buildFilterExpression?.({
+				fieldToken: "#field",
+				value: list,
+				appendValue: createAppendValue(),
+			}),
+		).toBe("(attribute_not_exists(#field) OR #field IN (:v1, :v2))");
+		expect(
+			excludes.buildFilterExpression?.({
+				fieldToken: "#field",
+				value: list,
+				appendValue: createAppendValue(),
+			}),
+		).toBe("(attribute_exists(#field) AND NOT (#field IN (:v1, :v2)))");
+		expect(includes.evaluate({ fieldValue: undefined, value: list })).toBe(true);
+		expect(includes.evaluate({ fieldValue: null, value: list })).toBe(true);
+		expect(includes.evaluate({ fieldValue: "b", value: list })).toBe(false);
+		expect(excludes.evaluate({ fieldValue: undefined, value: list })).toBe(false);
+		expect(excludes.evaluate({ fieldValue: "b", value: list })).toBe(true);
+	});
+
 	test("folds case only for insensitive string comparisons", () => {
 		const insensitive = (operator: string, fieldValue: string, value: unknown) =>
 			evaluateWhereEntry({ operator, mode: "insensitive", fieldValue, value });

@@ -18,7 +18,7 @@ import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
 import {
 	applyTransactionOverlay,
-	hasTransactionItems,
+	countTransactionItems,
 	type DynamoDBTransactionState,
 } from "../../dynamodb/ops/transaction";
 
@@ -248,24 +248,24 @@ export const executeJoin = async (props: {
 		getDefaultModelName: props.getDefaultModelName,
 		config: props.adapterConfig,
 	});
-	// Joined rows the transaction has written to are answered from its overlay;
-	// a limit applied by DynamoDB would count rows the overlay then replaces.
-	const resolveOverlayState = (): DynamoDBTransactionState | undefined => {
+	// Joined rows the transaction has written to are answered from its overlay.
+	// Each of them may drop out of the stored result, so that many more stored
+	// rows are read before the join limit is applied.
+	const countBufferedRows = (): number => {
 		if (!props.transactionState) {
-			return undefined;
+			return 0;
 		}
-		if (!hasTransactionItems(props.transactionState, joinTableName)) {
+		return countTransactionItems(props.transactionState, joinTableName);
+	};
+	const bufferedRows = countBufferedRows();
+	const resolveOverlayState = (): DynamoDBTransactionState | undefined => {
+		if (bufferedRows === 0) {
 			return undefined;
 		}
 		return props.transactionState;
 	};
 	const overlayState = resolveOverlayState();
-	const resolveFetchLimit = (): number | undefined => {
-		if (overlayState) {
-			return undefined;
-		}
-		return joinLimit;
-	};
+	const resolveFetchLimit = (): number => joinLimit + bufferedRows;
 	const fetchLimit = resolveFetchLimit();
 	const resolveJoinedItems = async (): Promise<DynamoDBItem[]> => {
 		if (strategy.kind === "batch-get") {
@@ -311,13 +311,7 @@ export const executeJoin = async (props: {
 			value: baseValues,
 		});
 		const maxPages = resolveScanMaxPages({ adapterConfig: props.adapterConfig });
-		const resolveLimitedScan = (): number | undefined => {
-			if (fetchLimit === undefined) {
-				return undefined;
-			}
-			return resolveScanLimit({ limit: fetchLimit, baseValues });
-		};
-		const scanLimit = resolveLimitedScan();
+		const scanLimit = resolveScanLimit({ limit: fetchLimit, baseValues });
 		return fetchByScan({
 			documentClient: props.documentClient,
 			adapterConfig: props.adapterConfig,

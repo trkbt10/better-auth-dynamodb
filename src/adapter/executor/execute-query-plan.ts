@@ -24,7 +24,7 @@ import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
 import {
 	applyTransactionOverlay,
-	hasTransactionItems,
+	countTransactionItems,
 	type DynamoDBTransactionState,
 } from "../../dynamodb/ops/transaction";
 import { applyWhereFilters } from "./where-evaluator";
@@ -92,6 +92,11 @@ const resolveScanMaxPages = (props: {
 	return props.adapterConfig.scanMaxPages;
 };
 
+// A value listed twice in an IN list selects the same rows once. BatchGetItem
+// rejects duplicate keys, and one query per value would return rows twice.
+const uniqueValues = (values: NativeAttributeValue[]): NativeAttributeValue[] =>
+	Array.from(new Set(values));
+
 const resolvePrimaryKeyValues = (props: {
 	where: NormalizedWhere[];
 	primaryKeyName: string;
@@ -105,7 +110,7 @@ const resolvePrimaryKeyValues = (props: {
 	if (!Array.isArray(entry.value)) {
 		return [];
 	}
-	return entry.value as NativeAttributeValue[];
+	return uniqueValues(entry.value as NativeAttributeValue[]);
 };
 
 const fetchBaseItems = async (props: {
@@ -156,7 +161,7 @@ const fetchBaseItems = async (props: {
 		if (!Array.isArray(inEntry.value)) {
 			return [];
 		}
-		const values = inEntry.value as NativeAttributeValue[];
+		const values = uniqueValues(inEntry.value as NativeAttributeValue[]);
 		const perQueryLimit = props.plan.execution.fetchLimit;
 		const baseModel = props.plan.base.model;
 		const results = await Promise.all(
@@ -297,15 +302,15 @@ const applyOffsetLimit = <T>(props: {
 	return props.items.slice(offset, offset + props.limit);
 };
 
-// Rows the transaction has written to are answered from its overlay, so the
-// stored rows have to be read in full: a limit or an order applied by DynamoDB
-// would be applied to rows the overlay then replaces or removes.
+// Rows the transaction has written to are answered from its overlay: each of
+// them may drop out of the stored result, so that many more stored rows are
+// read, and the order is established again after the overlay is applied.
 const resolveOverlayTable = (props: {
 	plan: AdapterQueryPlan;
 	transactionState: DynamoDBTransactionState | undefined;
 	adapterConfig: DynamoDBAdapterConfig;
 	getDefaultModelName: (model: string) => string;
-}): string | undefined => {
+}): { tableName: string; bufferedRows: number } | undefined => {
 	if (!props.transactionState) {
 		return undefined;
 	}
@@ -314,20 +319,28 @@ const resolveOverlayTable = (props: {
 		getDefaultModelName: props.getDefaultModelName,
 		config: props.adapterConfig,
 	});
-	if (!hasTransactionItems(props.transactionState, tableName)) {
+	const bufferedRows = countTransactionItems(props.transactionState, tableName);
+	if (bufferedRows === 0) {
 		return undefined;
 	}
-	return tableName;
+	return { tableName, bufferedRows };
 };
 
-const withoutServerLimitAndSort = (plan: AdapterQueryPlan): AdapterQueryPlan => ({
-	...plan,
-	execution: {
-		...plan.execution,
-		fetchLimit: undefined,
-		serverSort: undefined,
-	},
-});
+const withOverlayFetchLimit = (
+	plan: AdapterQueryPlan,
+	bufferedRows: number,
+): AdapterQueryPlan => {
+	if (plan.execution.fetchLimit === undefined) {
+		return plan;
+	}
+	return {
+		...plan,
+		execution: {
+			...plan.execution,
+			fetchLimit: plan.execution.fetchLimit + bufferedRows,
+		},
+	};
+};
 
 export const createQueryPlanExecutor = (props: {
 	documentClient: DynamoDBDocumentClient;
@@ -344,14 +357,14 @@ export const createQueryPlanExecutor = (props: {
 	}
 	const resolveOverlaidItems = (
 		plan: AdapterQueryPlan,
-		overlayTable: string | undefined,
+		overlay: { tableName: string } | undefined,
 		items: DynamoDBItem[],
 	): DynamoDBItem[] => {
-		if (!props.transactionState || overlayTable === undefined) {
+		if (!props.transactionState || overlay === undefined) {
 			return items;
 		}
 		return applyTransactionOverlay(props.transactionState, {
-			tableName: overlayTable,
+			tableName: overlay.tableName,
 			keyField: props.getFieldName({ model: plan.base.model, field: "id" }),
 			items,
 			matches: (item) =>
@@ -363,17 +376,17 @@ export const createQueryPlanExecutor = (props: {
 		requestedPlan: AdapterQueryPlan,
 		context?: AdapterExecutionContext | undefined,
 	): Promise<DynamoDBItem[]> => {
-		const overlayTable = resolveOverlayTable({
+		const overlay = resolveOverlayTable({
 			plan: requestedPlan,
 			transactionState: props.transactionState,
 			adapterConfig: props.adapterConfig,
 			getDefaultModelName: props.getDefaultModelName,
 		});
 		const resolvePlan = (): AdapterQueryPlan => {
-			if (overlayTable === undefined) {
+			if (overlay === undefined) {
 				return requestedPlan;
 			}
-			return withoutServerLimitAndSort(requestedPlan);
+			return withOverlayFetchLimit(requestedPlan, overlay.bufferedRows);
 		};
 		const plan = resolvePlan();
 		const baseItems = await fetchBaseItems({
@@ -391,7 +404,7 @@ export const createQueryPlanExecutor = (props: {
 		});
 		const filteredItems = resolveOverlaidItems(
 			plan,
-			overlayTable,
+			overlay,
 			applyClientFilter({
 				items: baseItems,
 				where: plan.base.where,
@@ -399,9 +412,15 @@ export const createQueryPlanExecutor = (props: {
 			}),
 		);
 
+		const resolveServerSort = () => {
+			if (overlay !== undefined) {
+				return undefined;
+			}
+			return plan.execution.serverSort;
+		};
 		const sortedItems = resolveSortedItems({
 			items: filteredItems,
-			serverSort: plan.execution.serverSort,
+			serverSort: resolveServerSort(),
 			sort: plan.base.sort,
 		});
 

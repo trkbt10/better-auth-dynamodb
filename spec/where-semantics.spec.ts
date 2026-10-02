@@ -189,6 +189,33 @@ describe("where clause semantics on DynamoDB Local", () => {
 		});
 	});
 
+	describe("IN lists", () => {
+		test("selects each row once for a value listed twice", async () => {
+			const first = await createVerification("in-twice", new Date());
+			const second = await createVerification("in-twice", new Date());
+			const byIndex = [
+				{ field: "identifier", operator: "in" as const, value: ["in-twice", "in-twice"] },
+			];
+			const byKey = [
+				{ field: "id", operator: "in" as const, value: [first.id, first.id, second.id] },
+			];
+
+			const indexed = await adapter.findMany<VerificationRow>({
+				model: "verification",
+				where: byIndex,
+			});
+			const keyed = await adapter.findMany<VerificationRow>({
+				model: "verification",
+				where: byKey,
+			});
+
+			expect(indexed.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+			expect(keyed.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+			expect(await adapter.count({ model: "verification", where: byIndex })).toBe(2);
+			expect(await adapter.count({ model: "verification", where: byKey })).toBe(2);
+		});
+	});
+
 	describe("filtered reads", () => {
 		test("finds a row by a field without an index in one page", async () => {
 			for (let index = 0; index < 30; index += 1) {

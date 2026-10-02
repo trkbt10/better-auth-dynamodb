@@ -155,6 +155,40 @@ describe("dynamodbAdapter", () => {
 		]);
 	});
 
+	test("reads as many extra rows as the transaction holds for the table", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof ScanCommand) {
+					return { Items: [{ id: "stored-1" }, { id: "stored-2" }, { id: "stored-3" }] };
+				}
+				return {};
+			},
+		});
+		const adapter = dynamodbAdapter({
+			documentClient,
+			tableNamePrefix: "auth_",
+			transaction: true,
+			scanMaxPages: 1,
+			indexNameResolver,
+		})({});
+
+		const rows = await adapter.transaction(async (tx) => {
+			await tx.create({
+				model: "user",
+				data: { id: "created", email: "a@example.com" },
+				forceAllowId: true,
+			});
+			return tx.findMany<{ id: string }>({ model: "user", limit: 2 });
+		});
+
+		const scan = sendCalls.find(
+			(command): command is ScanCommand => command instanceof ScanCommand,
+		);
+		// limit 2, plus the one row the transaction could replace or remove.
+		expect(scan?.input.Limit).toBe(3);
+		expect(rows).toHaveLength(2);
+	});
+
 	test("creates items with PutCommand", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async () => ({}),

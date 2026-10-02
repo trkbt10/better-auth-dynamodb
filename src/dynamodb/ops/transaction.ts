@@ -59,21 +59,21 @@ export const findTransactionItem = (
 		return Object.is(entry.key[target.keyField], target.keyValue);
 	});
 
+export const countTransactionItems = (
+	state: DynamoDBTransactionState,
+	tableName: string,
+): number =>
+	state.items.filter((entry) => entry.tableName === tableName).length;
+
 export const hasTransactionItems = (
 	state: DynamoDBTransactionState,
 	tableName: string,
-): boolean => state.items.some((entry) => entry.tableName === tableName);
+): boolean => countTransactionItems(state, tableName) > 0;
 
 const addTransactionItem = (
 	state: DynamoDBTransactionState,
 	entry: DynamoDBTransactionItem,
 ): void => {
-	if (state.items.length >= TRANSACTION_ITEM_LIMIT) {
-		throw new DynamoDBAdapterError(
-			"TRANSACTION_LIMIT",
-			`DynamoDB transactions are limited to ${TRANSACTION_ITEM_LIMIT} items.`,
-		);
-	}
 	state.items.push(entry);
 };
 
@@ -348,6 +348,14 @@ export const executeTransaction = async (props: {
 		);
 	if (transactItems.length === 0) {
 		return;
+	}
+	// Counted here, over the operations actually sent: a row that was created
+	// and deleted again, or left unchanged, takes no place in the request.
+	if (transactItems.length > TRANSACTION_ITEM_LIMIT) {
+		throw new DynamoDBAdapterError(
+			"TRANSACTION_LIMIT",
+			`DynamoDB transactions are limited to ${TRANSACTION_ITEM_LIMIT} items; this one writes ${transactItems.length}.`,
+		);
 	}
 
 	await documentClient.send(
