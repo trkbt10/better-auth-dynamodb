@@ -9,7 +9,7 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { applyExpressionAttributes } from "./apply-expression-attributes";
 import { paginate } from "./paginate";
-import { resolveRemainingLimit } from "./resolve-remaining-limit";
+import { limitItems, resolveRemainingLimit } from "./resolve-remaining-limit";
 import type { DynamoDBOperationStatsCollector } from "./operation-stats";
 
 export type DynamoDBQueryOptions = {
@@ -59,7 +59,10 @@ export const queryItems = async (
 				commandInput.ExclusiveStartKey = lastEvaluatedKey;
 			}
 
-			if (remaining !== undefined) {
+			// `Limit` caps the items DynamoDB evaluates, before the filter is
+			// applied. It is only the number of items wanted when nothing is
+			// filtered out; with a filter the page is read in full.
+			if (remaining !== undefined && !options.filterExpression) {
 				commandInput.Limit = remaining;
 			}
 			if (options.scanIndexForward !== undefined) {
@@ -82,6 +85,9 @@ export const queryItems = async (
 					| undefined) ??
 				undefined;
 
+			if (resolveRemainingLimit(options.limit, items.length) === 0) {
+				return { shouldStop: true };
+			}
 			return { nextToken };
 		},
 	});
@@ -95,7 +101,7 @@ export const queryItems = async (
 		);
 	}
 
-	return items;
+	return limitItems(items, options.limit);
 };
 
 export const queryCount = async (

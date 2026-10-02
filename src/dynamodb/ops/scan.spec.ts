@@ -45,6 +45,53 @@ describe("scanItems", () => {
 		}
 	});
 
+	test("does not charge the page budget once the limit is reached", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({
+				Items: [{ id: "1" }],
+				LastEvaluatedKey: { id: "1" },
+			}),
+		});
+
+		const items = await scanItems({
+			documentClient,
+			tableName: "users",
+			filterExpression: undefined,
+			expressionAttributeNames: {},
+			expressionAttributeValues: {},
+			limit: 1,
+			maxPages: 1,
+		});
+
+		expect(items).toEqual([{ id: "1" }]);
+		expect(sendCalls).toHaveLength(1);
+	});
+
+	test("reads full pages when a filter is applied and trims the result", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({
+				Items: [{ id: "1" }, { id: "2" }, { id: "3" }],
+				LastEvaluatedKey: { id: "3" },
+			}),
+		});
+
+		const items = await scanItems({
+			documentClient,
+			tableName: "users",
+			filterExpression: "#f0 = :v0",
+			expressionAttributeNames: { "#f0": "name" },
+			expressionAttributeValues: { ":v0": "a" },
+			limit: 2,
+		});
+
+		expect(items).toEqual([{ id: "1" }, { id: "2" }]);
+		expect(sendCalls).toHaveLength(1);
+		const command = sendCalls[0];
+		if (command instanceof ScanCommand) {
+			expect(command.input.Limit).toBeUndefined();
+		}
+	});
+
 	test("honors limit on first page", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async () => ({ Items: [{ id: "1" }] }),

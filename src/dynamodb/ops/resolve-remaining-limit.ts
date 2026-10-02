@@ -14,3 +14,14 @@ export const resolveRemainingLimit = (
 	}
 	return remaining;
 };
+
+/**
+ * Cut a result down to the requested number of items. A page read in full
+ * can return more than were still wanted.
+ */
+export const limitItems = <T>(items: T[], limit: number | undefined): T[] => {
+	if (limit === undefined || items.length <= limit) {
+		return items;
+	}
+	return items.slice(0, limit);
+};

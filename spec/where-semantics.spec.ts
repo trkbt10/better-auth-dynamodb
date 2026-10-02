@@ -5,6 +5,11 @@
  */
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { BetterAuthOptions } from "@better-auth/core";
+import { dynamodbAdapter } from "../src/adapter";
+import {
+	createIndexResolversFromSchemas,
+	generateTableSchemas,
+} from "../src/table-schemas";
 import { createLocalEnvironment, localClients } from "./dynamodb-local-environment";
 
 type VerificationRow = { id: string; identifier: string; value: string };
@@ -181,6 +186,35 @@ describe("where clause semantics on DynamoDB Local", () => {
 			});
 
 			expect(rows.map((row) => row.id)).toEqual([first.id]);
+		});
+	});
+
+	describe("filtered reads", () => {
+		test("finds a row by a field without an index in one page", async () => {
+			for (let index = 0; index < 30; index += 1) {
+				await createDevice({ label: `scan-${index}` });
+			}
+			// One page is the whole budget: the filter must run over a full page,
+			// not over one evaluated item per request.
+			const narrow = dynamodbAdapter({
+				documentClient,
+				tableNamePrefix: "where_semantics_",
+				scanMaxPages: 1,
+				...createIndexResolversFromSchemas(generateTableSchemas(options)),
+			})(options);
+
+			const found = await narrow.findOne<DeviceRow>({
+				model: "device",
+				where: [{ field: "label", value: "scan-29" }],
+			});
+			const page = await narrow.findMany<DeviceRow>({
+				model: "device",
+				where: [{ field: "label", operator: "starts_with", value: "scan-" }],
+				limit: 5,
+			});
+
+			expect(found?.label).toBe("scan-29");
+			expect(page).toHaveLength(5);
 		});
 	});
 

@@ -6,6 +6,43 @@ import { createDocumentClientStub } from "../../../spec/dynamodb-document-client
 import { queryCount, queryItems } from "./query";
 
 describe("queryItems", () => {
+	test("reads full pages when a filter is applied and trims the result", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({
+				Items: [{ id: "1" }, { id: "2" }, { id: "3" }],
+				LastEvaluatedKey: { id: "3" },
+			}),
+		});
+
+		const filtered = await queryItems({
+			documentClient,
+			tableName: "sessions",
+			keyConditionExpression: "#pk = :pk",
+			filterExpression: "#f0 = :v0",
+			expressionAttributeNames: { "#pk": "userId", "#f0": "kind" },
+			expressionAttributeValues: { ":pk": "u1", ":v0": "a" },
+			limit: 2,
+		});
+		const unfiltered = await queryItems({
+			documentClient,
+			tableName: "sessions",
+			keyConditionExpression: "#pk = :pk",
+			filterExpression: undefined,
+			expressionAttributeNames: { "#pk": "userId" },
+			expressionAttributeValues: { ":pk": "u1" },
+			limit: 2,
+		});
+
+		expect(filtered).toEqual([{ id: "1" }, { id: "2" }]);
+		expect(unfiltered).toEqual([{ id: "1" }, { id: "2" }]);
+		expect(sendCalls).toHaveLength(2);
+		const [withFilter, withoutFilter] = sendCalls;
+		if (withFilter instanceof QueryCommand && withoutFilter instanceof QueryCommand) {
+			expect(withFilter.input.Limit).toBeUndefined();
+			expect(withoutFilter.input.Limit).toBe(2);
+		}
+	});
+
 	test("paginates until exhaustion", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command: unknown, callIndex: number) => {
