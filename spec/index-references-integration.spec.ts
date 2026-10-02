@@ -21,7 +21,7 @@ import {
 	createIndexResolversFromSchemas,
 } from "../src/table-schemas";
 import { createStatefulDocumentClient } from "./stateful-document-client";
-import { signUpAndGetHeaders } from "./plugin-test-utils";
+import { requireTotpEnrollment, signUpAndGetHeaders } from "./plugin-test-utils";
 
 describe("indexReferences integration with adapter", () => {
 	describe("deviceAuthorization plugin (schema extension)", () => {
@@ -149,10 +149,12 @@ describe("indexReferences integration with adapter", () => {
 				"Alice",
 			);
 
-			const result = await auth.api.enableTwoFactor({
-				body: { password: "securepassword123" },
-				headers,
-			});
+			const result = requireTotpEnrollment(
+				await auth.api.enableTwoFactor({
+					body: { password: "securepassword123" },
+					headers,
+				}),
+			);
 
 			expect(result.totpURI).toBeDefined();
 

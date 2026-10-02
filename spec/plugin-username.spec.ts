@@ -15,7 +15,8 @@ import {
 } from "../src/table-schemas";
 import { createStatefulDocumentClient } from "./stateful-document-client";
 
-const plugins = [username()];
+// Tuple type: better-auth 1.7 infers plugin-added signUpEmail body fields (username) only from a tuple, not from an array.
+const plugins: [ReturnType<typeof username>] = [username()];
 const schemas = generateTableSchemas({ plugins });
 const resolvers = createIndexResolversFromSchemas(schemas);
 

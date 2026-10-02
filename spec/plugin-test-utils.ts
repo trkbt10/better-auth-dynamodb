@@ -30,6 +30,28 @@ export const createTestAuth = (options: CreateTestAuthOptions) =>
 		databaseHooks: options.databaseHooks,
 	});
 
+const isTotpEnrollment = <T extends { method: string }>(
+	result: T,
+): result is Extract<T, { method: "totp" }> => result.method === "totp";
+
+/**
+ * Narrow an `enableTwoFactor` result to the TOTP enrollment.
+ *
+ * `enableTwoFactor` returns `{ method: "otp" }` or
+ * `{ method: "totp"; totpURI; backupCodes }`; tests that read `totpURI` /
+ * `backupCodes` require the TOTP branch and fail otherwise.
+ */
+export const requireTotpEnrollment = <T extends { method: string }>(
+	result: T,
+): Extract<T, { method: "totp" }> => {
+	if (!isTotpEnrollment(result)) {
+		throw new Error(
+			`enableTwoFactor returned method "${result.method}"; expected the TOTP enrollment.`,
+		);
+	}
+	return result;
+};
+
 /**
  * Parse `Set-Cookie` header to extract a named cookie value.
  *

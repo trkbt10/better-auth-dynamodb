@@ -1,5 +1,5 @@
 /**
- * @file Repro tests for join fallback N+1 risk when experimental joins are disabled.
+ * @file Repro tests for join fallback N+1 risk when database joins (advanced.database.joins) are disabled.
  */
 import type { BetterAuthOptions } from "@better-auth/core";
 import { BatchGetCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
@@ -48,7 +48,7 @@ describe("fallback join batching", () => {
 			indexNameResolver: () => undefined,
 		});
 		const options: BetterAuthOptions = {
-			experimental: { joins: false },
+			advanced: { database: { joins: false } },
 		};
 		const adapter = adapterFactory(options);
 
@@ -174,7 +174,7 @@ describe("fallback join batching", () => {
 			indexNameResolver: () => undefined,
 		});
 		const options: BetterAuthOptions = {
-			experimental: { joins: false },
+			advanced: { database: { joins: false } },
 		};
 		const adapter = adapterFactory(options);
 
@@ -234,7 +234,7 @@ describe("fallback join batching", () => {
 			indexNameResolver: () => undefined,
 		});
 		const options: BetterAuthOptions = {
-			experimental: { joins: false },
+			advanced: { database: { joins: false } },
 		};
 		const adapter = adapterFactory(options);
 
@@ -292,7 +292,7 @@ describe("fallback join batching", () => {
 			indexNameResolver: () => undefined,
 		});
 		const options: BetterAuthOptions = {
-			experimental: { joins: false },
+			advanced: { database: { joins: false } },
 		};
 		const adapter = adapterFactory(options);
 

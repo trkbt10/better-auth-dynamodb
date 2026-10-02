@@ -3,7 +3,7 @@
  * Verifies that generateTableSchemas correctly converts Better Auth schema to DynamoDB.
  * Tests the MECHANISM (unique/index/references → GSI), not individual plugins.
  *
- * Plugin-specific tests should be in separate files (e.g., oidc-provider.spec.ts).
+ * Plugin-specific tests should be in separate files (e.g., oauth-provider.spec.ts).
  */
 import { getAuthTables } from "@better-auth/core/db";
 import {
@@ -16,13 +16,13 @@ import {
 	magicLink,
 	multiSession,
 	oAuthProxy,
-	oidcProvider,
 	oneTap,
 	oneTimeToken,
 	openAPI,
 	phoneNumber,
 	twoFactor,
 } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { generateTableSchemas, createIndexResolversFromSchemas } from "../src";
 
 describe("migration compatibility", () => {
@@ -47,11 +47,13 @@ describe("migration compatibility", () => {
 		});
 
 		it("converts references fields to GSIs (Better Auth sets index: true on references)", () => {
-			const options = { plugins: [oidcProvider({ loginPage: "/login" })] };
+			const options = {
+				plugins: [oauthProvider({ loginPage: "/login", consentPage: "/consent" })],
+			};
 			const authTables = getAuthTables(options);
 
 			const clientIdField = authTables.oauthAccessToken.fields.clientId;
-			expect(clientIdField.references?.model).toBe("oauthApplication");
+			expect(clientIdField.references?.model).toBe("oauthClient");
 			expect(clientIdField.index).toBe(true);
 
 			const schemas = generateTableSchemas(options);
@@ -93,12 +95,14 @@ describe("migration compatibility", () => {
 			);
 		});
 
-		it("pattern: multiple tables (oidcProvider)", () => {
-			const options = { plugins: [oidcProvider({ loginPage: "/login" })] };
+		it("pattern: multiple tables (oauthProvider)", () => {
+			const options = {
+				plugins: [oauthProvider({ loginPage: "/login", consentPage: "/consent" })],
+			};
 			const schemas = generateTableSchemas(options);
 			const tableNames = schemas.map((s) => s.tableName);
 
-			expect(tableNames).toContain("oauthApplication");
+			expect(tableNames).toContain("oauthClient");
 			expect(tableNames).toContain("oauthAccessToken");
 			expect(tableNames).toContain("oauthConsent");
 		});

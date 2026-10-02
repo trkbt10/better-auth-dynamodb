@@ -3,6 +3,10 @@
  *
  * SCIM plugin from @better-auth/scim provides SCIM 2.0 server support.
  * Allows identity providers to sync identities to your service.
+ *
+ * `scim()` requires options in @better-auth/scim 1.7.6. The managed connection catalog is enabled
+ * (with no code-defined connections) so the plugin persists its full table set:
+ * the managed connection / credential tables plus the provisioned user / group tables.
  */
 import { DynamoDBClient, DeleteTableCommand, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { getAuthTables } from "@better-auth/core/db";
@@ -10,7 +14,16 @@ import { scim } from "@better-auth/scim";
 import { generateTableSchemas, applyTableSchemas, createIndexResolversFromSchemas } from "../src";
 
 describe("scim plugin", () => {
-	const options = { plugins: [scim()] };
+	const options = {
+		plugins: [
+			scim({
+				connections: [],
+				managedConnections: {
+					credentialHashSecret: "test-scim-credential-hash-secret-32-chars!!",
+				},
+			}),
+		],
+	};
 
 	describe("schema generation", () => {
 		it("creates scim tables or extends user", () => {

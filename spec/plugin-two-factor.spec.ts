@@ -11,7 +11,7 @@ import { admin } from "better-auth/plugins/admin";
 import { PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { dynamodbAdapter } from "../src/adapter";
 import { createStatefulDocumentClient } from "./stateful-document-client";
-import { signUpAndGetHeaders } from "./plugin-test-utils";
+import { requireTotpEnrollment, signUpAndGetHeaders } from "./plugin-test-utils";
 import {
 	generateTableSchemas,
 	createIndexResolversFromSchemas,
@@ -51,10 +51,12 @@ describe("Two-Factor plugin (transaction: true)", () => {
 			"Alice",
 		);
 
-		const result = await auth.api.enableTwoFactor({
-			body: { password: "securepassword123" },
-			headers,
-		});
+		const result = requireTotpEnrollment(
+			await auth.api.enableTwoFactor({
+				body: { password: "securepassword123" },
+				headers,
+			}),
+		);
 
 		expect(result).toBeDefined();
 		expect(result.totpURI).toBeDefined();
@@ -89,10 +91,12 @@ describe("Two-Factor plugin (transaction: false)", () => {
 			"Charlie",
 		);
 
-		const result = await auth.api.enableTwoFactor({
-			body: { password: "securepassword123" },
-			headers,
-		});
+		const result = requireTotpEnrollment(
+			await auth.api.enableTwoFactor({
+				body: { password: "securepassword123" },
+				headers,
+			}),
+		);
 
 		expect(result).toBeDefined();
 		expect(result.totpURI).toBeDefined();
