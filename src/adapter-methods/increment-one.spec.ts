@@ -302,7 +302,7 @@ describe("createIncrementOneMethod", () => {
 		}
 	});
 
-	test("buffers a pinned conditional update and returns the computed row inside a transaction", async () => {
+	test("buffers a pinned update and returns the computed row inside a transaction", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {
 				if (command instanceof GetCommand) {
@@ -334,37 +334,14 @@ describe("createIncrementOneMethod", () => {
 
 		expect(updated).toEqual({ id: "t1", memberCount: 3, name: "renamed" });
 		expect(sendCalls.some((call) => call instanceof UpdateCommand)).toBe(false);
-		expect(transactionState.operations).toEqual([
+		expect(transactionState.items).toEqual([
 			{
-				kind: "update",
 				tableName: "team",
+				keyField: "id",
 				key: { id: "t1" },
-				updateExpression:
-					"SET #inc0 = if_not_exists(#inc0, :zero) + :inc0, #set0 = :set0",
-				expressionAttributeNames: { "#inc0": "memberCount", "#set0": "name" },
-				expressionAttributeValues: {
-					":inc0": 1,
-					":zero": 0,
-					":numberType": "N",
-					":set0": "renamed",
-				},
-				condition: {
-					conditionExpression:
-						"attribute_exists(#pk) AND (#f0 = :v0 AND #f1 < :v1) AND #pin0 = :pin0 AND #pin1 = :pin1 AND (attribute_not_exists(#inc0) OR attribute_type(#inc0, :numberType))",
-					expressionAttributeNames: {
-						"#pk": "id",
-						"#f0": "id",
-						"#f1": "memberCount",
-						"#pin0": "id",
-						"#pin1": "memberCount",
-					},
-					expressionAttributeValues: {
-						":v0": "t1",
-						":v1": 5,
-						":pin0": "t1",
-						":pin1": 2,
-					},
-				},
+				base: { id: "t1", memberCount: 2, name: "team" },
+				current: { id: "t1", memberCount: 3, name: "renamed" },
+				pinnedFields: ["id", "memberCount"],
 			},
 		]);
 	});

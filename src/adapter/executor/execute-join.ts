@@ -16,6 +16,11 @@ import { batchGetItems } from "../../dynamodb/ops/batch-get";
 import type { DynamoDBWhere } from "../../dynamodb/types";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
+import {
+	applyTransactionOverlay,
+	hasTransactionItems,
+	type DynamoDBTransactionState,
+} from "../../dynamodb/ops/transaction";
 
 const resolveJoinLimit = (props: {
 	relation: JoinPlan["relation"];
@@ -208,6 +213,7 @@ export const executeJoin = async (props: {
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
 	operationStats?: DynamoDBOperationStatsCollector | undefined;
+	transactionState?: DynamoDBTransactionState | undefined;
 }): Promise<DynamoDBItem[]> => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -237,6 +243,30 @@ export const executeJoin = async (props: {
 		relation: props.join.relation,
 		limit: props.join.limit,
 	});
+	const joinTableName = resolveTableName({
+		model: props.join.model,
+		getDefaultModelName: props.getDefaultModelName,
+		config: props.adapterConfig,
+	});
+	// Joined rows the transaction has written to are answered from its overlay;
+	// a limit applied by DynamoDB would count rows the overlay then replaces.
+	const resolveOverlayState = (): DynamoDBTransactionState | undefined => {
+		if (!props.transactionState) {
+			return undefined;
+		}
+		if (!hasTransactionItems(props.transactionState, joinTableName)) {
+			return undefined;
+		}
+		return props.transactionState;
+	};
+	const overlayState = resolveOverlayState();
+	const resolveFetchLimit = (): number | undefined => {
+		if (overlayState) {
+			return undefined;
+		}
+		return joinLimit;
+	};
+	const fetchLimit = resolveFetchLimit();
 	const resolveJoinedItems = async (): Promise<DynamoDBItem[]> => {
 		if (strategy.kind === "batch-get") {
 			const keyField = props.join.on.to;
@@ -267,7 +297,7 @@ export const executeJoin = async (props: {
 					adapterConfig: props.adapterConfig,
 					model: props.join.model,
 					where,
-					limit: joinLimit,
+					limit: fetchLimit,
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
 					operationStats: props.operationStats,
@@ -281,10 +311,13 @@ export const executeJoin = async (props: {
 			value: baseValues,
 		});
 		const maxPages = resolveScanMaxPages({ adapterConfig: props.adapterConfig });
-		const scanLimit = resolveScanLimit({
-			limit: joinLimit,
-			baseValues,
-		});
+		const resolveLimitedScan = (): number | undefined => {
+			if (fetchLimit === undefined) {
+				return undefined;
+			}
+			return resolveScanLimit({ limit: fetchLimit, baseValues });
+		};
+		const scanLimit = resolveLimitedScan();
 		return fetchByScan({
 			documentClient: props.documentClient,
 			adapterConfig: props.adapterConfig,
@@ -298,7 +331,18 @@ export const executeJoin = async (props: {
 		});
 	};
 
-	const joinedItems = await resolveJoinedItems();
+	const resolveOverlaidItems = (items: DynamoDBItem[]): DynamoDBItem[] => {
+		if (!overlayState) {
+			return items;
+		}
+		return applyTransactionOverlay(overlayState, {
+			tableName: joinTableName,
+			keyField: props.getFieldName({ model: props.join.model, field: "id" }),
+			items,
+			matches: (item) => baseValues.includes(item[props.join.on.to]),
+		});
+	};
+	const joinedItems = resolveOverlaidItems(await resolveJoinedItems());
 
 	const grouped = groupByJoinField({
 		items: joinedItems,

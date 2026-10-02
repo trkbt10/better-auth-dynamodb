@@ -8,13 +8,7 @@
  * condition means the row changed after it was read; the caller resolves the
  * target again and retries.
  */
-import {
-	DeleteCommand,
-	GetCommand,
-	UpdateCommand,
-	type DeleteCommandInput,
-	type UpdateCommandInput,
-} from "@aws-sdk/lib-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
@@ -29,7 +23,10 @@ import type { AtomicCondition } from "../dynamodb/expressions/build-atomic-condi
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
 import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
-import type { DynamoDBTransactionState } from "../dynamodb/ops/transaction";
+import {
+	findTransactionItem,
+	type DynamoDBTransactionState,
+} from "../dynamodb/ops/transaction";
 import type { DynamoDBWhere } from "../dynamodb/types";
 import type { AdapterClientContainer } from "./client-container";
 
@@ -58,10 +55,6 @@ export type AtomicTarget = {
 export type PinnedPrimaryKey =
 	| { pinned: true; value: NativeAttributeValue | null | undefined }
 	| { pinned: false };
-
-export type ConditionalWriteResult =
-	| { applied: true; attributes: DynamoDBItem | undefined }
-	| { applied: false };
 
 export const toDynamoWhere = (where: Where[]): DynamoDBWhere[] =>
 	normalizeWhere({ where }).map((entry) => ({
@@ -130,43 +123,6 @@ export const buildConditionInput = (
 	return { ...input, ExpressionAttributeValues: expressionAttributeValues };
 };
 
-const isConditionalCheckFailure = (error: unknown): boolean => {
-	if (!(error instanceof Error)) {
-		return false;
-	}
-	return error.name === "ConditionalCheckFailedException";
-};
-
-export const sendConditionalDelete = async (
-	client: AdapterClientContainer,
-	input: DeleteCommandInput,
-): Promise<ConditionalWriteResult> => {
-	try {
-		const output = await client.documentClient.send(new DeleteCommand(input));
-		return { applied: true, attributes: output.Attributes };
-	} catch (error) {
-		if (isConditionalCheckFailure(error)) {
-			return { applied: false };
-		}
-		throw error;
-	}
-};
-
-export const sendConditionalUpdate = async (
-	client: AdapterClientContainer,
-	input: UpdateCommandInput,
-): Promise<ConditionalWriteResult> => {
-	try {
-		const output = await client.documentClient.send(new UpdateCommand(input));
-		return { applied: true, attributes: output.Attributes };
-	} catch (error) {
-		if (isConditionalCheckFailure(error)) {
-			return { applied: false };
-		}
-		throw error;
-	}
-};
-
 export const createContentionError = (method: string): DynamoDBAdapterError =>
 	new DynamoDBAdapterError(
 		"ATOMIC_WRITE_CONTENTION",
@@ -180,19 +136,47 @@ export const createContentionError = (method: string): DynamoDBAdapterError =>
  * A where clause that pins the primary key is read with a strongly consistent
  * GetItem and checked against the remaining predicates in memory. Any other
  * where clause goes through the query planner, exactly like update / delete.
+ * Inside a transaction both paths see the transaction's own writes.
  */
 export const createAtomicTargetResolver = (
 	client: AdapterClientContainer,
 	options: AtomicMethodOptions,
 ) => {
 	const { documentClient } = client;
-	const { adapterConfig, getFieldName, getDefaultModelName } = options;
+	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
+		options;
 	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
+		transactionState,
 	});
+
+	const readPinnedRow = async (props: {
+		tableName: string;
+		primaryKeyName: string;
+		value: NativeAttributeValue;
+	}): Promise<DynamoDBItem | null> => {
+		if (transactionState) {
+			const buffered = findTransactionItem(transactionState, {
+				tableName: props.tableName,
+				keyField: props.primaryKeyName,
+				keyValue: props.value,
+			});
+			if (buffered) {
+				return buffered.current;
+			}
+		}
+		const output = await documentClient.send(
+			new GetCommand({
+				TableName: props.tableName,
+				Key: { [props.primaryKeyName]: props.value },
+				ConsistentRead: true,
+			}),
+		);
+		return output.Item ?? null;
+	};
 
 	const resolvePinnedTarget = async (props: {
 		model: string;
@@ -203,29 +187,29 @@ export const createAtomicTargetResolver = (
 		if (props.value === undefined || props.value === null) {
 			return null;
 		}
-		const key = { [props.primaryKeyName]: props.value };
-		const output = await documentClient.send(
-			new GetCommand({
-				TableName: resolveTableName({
-					model: props.model,
-					getDefaultModelName,
-					config: adapterConfig,
-				}),
-				Key: key,
-				ConsistentRead: true,
+		const row = await readPinnedRow({
+			tableName: resolveTableName({
+				model: props.model,
+				getDefaultModelName,
+				config: adapterConfig,
 			}),
-		);
-		if (!output.Item) {
+			primaryKeyName: props.primaryKeyName,
+			value: props.value,
+		});
+		if (!row) {
 			return null;
 		}
 		const matches = applyWhereFilters({
-			items: [output.Item],
+			items: [row],
 			where: normalizeWhere({ where: props.where }),
 		});
 		if (matches.length === 0) {
 			return null;
 		}
-		return { key, snapshot: matches[0] };
+		return {
+			key: { [props.primaryKeyName]: props.value },
+			snapshot: matches[0],
+		};
 	};
 
 	return async (props: {

@@ -15,9 +15,17 @@ import {
 	createDynamoDBOperationStatsCollector,
 	formatDynamoDBOperationStats,
 } from "../dynamodb/ops/operation-stats";
-import type { DynamoDBTransactionState } from "../dynamodb/ops/transaction";
+import {
+	findTransactionItem,
+	type DynamoDBTransactionState,
+} from "../dynamodb/ops/transaction";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
-import { searchTransactionBuffer } from "./transaction-buffer-search";
+import { normalizeWhere } from "../adapter/planner/normalize-where";
+import {
+	applyWhereFilters,
+	type DynamoDBItem,
+} from "../adapter/executor/where-evaluator";
+import { resolvePinnedPrimaryKey } from "./atomic-write";
 
 type FindOneOptions = FindManyOptions & {
 	primaryKeyLoader?: PrimaryKeyBatchLoader | undefined;
@@ -33,7 +41,51 @@ export const createFindOneMethod = (
 		adapterConfig: options.adapterConfig,
 		getFieldName: options.getFieldName,
 		getDefaultModelName: options.getDefaultModelName,
+		transactionState: options.transactionState,
 	});
+	// A row the transaction has written to is answered from its overlay; a
+	// lookup by primary key needs no request for it.
+	const findBufferedRow = (props: {
+		model: string;
+		where: Where[];
+	}): { buffered: true; row: DynamoDBItem | null } | { buffered: false } => {
+		if (!options.transactionState) {
+			return { buffered: false };
+		}
+		const primaryKeyName = options.getFieldName({
+			model: props.model,
+			field: "id",
+		});
+		const pinned = resolvePinnedPrimaryKey({
+			model: props.model,
+			where: props.where,
+			primaryKeyName,
+			getFieldName: options.getFieldName,
+		});
+		if (!pinned.pinned) {
+			return { buffered: false };
+		}
+		const entry = findTransactionItem(options.transactionState, {
+			tableName: resolveTableName({
+				model: props.model,
+				getDefaultModelName: options.getDefaultModelName,
+				config: options.adapterConfig,
+			}),
+			keyField: primaryKeyName,
+			keyValue: pinned.value,
+		});
+		if (!entry) {
+			return { buffered: false };
+		}
+		if (entry.current === null) {
+			return { buffered: true, row: null };
+		}
+		const matches = applyWhereFilters({
+			items: [entry.current],
+			where: normalizeWhere({ where: props.where }),
+		});
+		return { buffered: true, row: matches[0] ?? null };
+	};
 
 	return async <T>({
 		model,
@@ -46,19 +98,10 @@ export const createFindOneMethod = (
 		select?: string[] | undefined;
 		join?: JoinConfig | undefined;
 	}) => {
-		if (options.transactionState) {
-			const tableName = resolveTableName({
-				model,
-				getDefaultModelName: options.getDefaultModelName,
-				config: options.adapterConfig,
-			});
-			const bufferResult = searchTransactionBuffer({
-				transactionState: options.transactionState,
-				tableName,
-				where,
-			});
-			if (bufferResult.found) {
-				return bufferResult.item as T;
+		if (join === undefined && select === undefined) {
+			const buffered = findBufferedRow({ model, where });
+			if (buffered.buffered) {
+				return buffered.row as T | null;
 			}
 		}
 

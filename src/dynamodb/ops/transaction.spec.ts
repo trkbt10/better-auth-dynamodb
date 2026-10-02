@@ -4,10 +4,16 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocumentClientStub } from "../../../spec/dynamodb-document-client";
 import {
-	addTransactionOperation,
+	TRANSACTION_ITEM_LIMIT,
+	applyTransactionOverlay,
+	bufferTransactionCreate,
+	bufferTransactionWrite,
 	createTransactionState,
 	executeTransaction,
-	hasBufferedDelete,
+	findTransactionItem,
+	hasTransactionItems,
+	pinTransactionFields,
+	type DynamoDBTransactionState,
 } from "./transaction";
 import { DynamoDBAdapterError } from "../errors/errors";
 
@@ -21,22 +27,38 @@ describe("transaction helpers", () => {
 		return undefined;
 	};
 
-	test("enforces transaction limit", () => {
-		const state = createTransactionState();
-		const operations = Array.from({ length: 25 }, () => ({
-			kind: "put" as const,
-			tableName: "users",
-			item: { id: "user" },
-		}));
-
-		operations.forEach((operation) => {
-			addTransactionOperation(state, operation);
+	const commit = async (state: DynamoDBTransactionState): Promise<unknown[]> => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async () => ({}),
 		});
+		await executeTransaction({ documentClient, state });
+		return sendCalls;
+	};
+
+	const committedItems = async (
+		state: DynamoDBTransactionState,
+	): Promise<unknown> => {
+		const [command] = await commit(state);
+		if (!(command instanceof TransactWriteCommand)) {
+			throw new Error("Expected a TransactWriteCommand to be sent.");
+		}
+		return command.input.TransactItems;
+	};
+
+	test("enforces the transaction item limit", () => {
+		const state = createTransactionState();
+		for (let index = 0; index < TRANSACTION_ITEM_LIMIT; index += 1) {
+			bufferTransactionCreate(state, {
+				tableName: "users",
+				keyField: "id",
+				item: { id: `user-${index}` },
+			});
+		}
 
 		const error = captureError(() =>
-			addTransactionOperation(state, {
-				kind: "put",
+			bufferTransactionCreate(state, {
 				tableName: "users",
+				keyField: "id",
 				item: { id: "overflow" },
 			}),
 		);
@@ -47,139 +69,377 @@ describe("transaction helpers", () => {
 		}
 	});
 
-	test("executes transact write", async () => {
-		const { documentClient, sendCalls } = createDocumentClientStub({
-			respond: async () => ({}),
-		});
+	test("sends nothing for an empty transaction", async () => {
+		expect(await commit(createTransactionState())).toEqual([]);
+	});
+
+	test("creates a row only when its key is free", async () => {
 		const state = createTransactionState();
-		addTransactionOperation(state, {
-			kind: "put",
+		bufferTransactionCreate(state, {
 			tableName: "users",
+			keyField: "id",
+			item: { id: "user-1", name: "a" },
+		});
+
+		expect(await committedItems(state)).toEqual([
+			{
+				Put: {
+					TableName: "users",
+					Item: { id: "user-1", name: "a" },
+					ConditionExpression: "attribute_not_exists(#pk)",
+					ExpressionAttributeNames: { "#pk": "id" },
+				},
+			},
+		]);
+	});
+
+	test("rejects a second create of a row the transaction holds", () => {
+		const state = createTransactionState();
+		bufferTransactionCreate(state, {
+			tableName: "users",
+			keyField: "id",
 			item: { id: "user-1" },
 		});
 
-		await executeTransaction({ documentClient, state });
+		const error = captureError(() =>
+			bufferTransactionCreate(state, {
+				tableName: "users",
+				keyField: "id",
+				item: { id: "user-1" },
+			}),
+		);
 
-		expect(sendCalls.length).toBe(1);
-		expect(sendCalls[0]).toBeInstanceOf(TransactWriteCommand);
-	});
-
-	test("sends the condition of a buffered delete and update", async () => {
-		const { documentClient, sendCalls } = createDocumentClientStub({
-			respond: async () => ({}),
-		});
-		const state = createTransactionState();
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "verification",
-			key: { id: "v1" },
-			condition: {
-				conditionExpression: "attribute_exists(#pk)",
-				expressionAttributeNames: { "#pk": "id" },
-				expressionAttributeValues: {},
-			},
-		});
-		addTransactionOperation(state, {
-			kind: "update",
-			tableName: "team",
-			key: { id: "t1" },
-			updateExpression: "SET #inc0 = if_not_exists(#inc0, :zero) + :inc0",
-			expressionAttributeNames: { "#inc0": "memberCount" },
-			expressionAttributeValues: { ":inc0": 1, ":zero": 0 },
-			condition: {
-				conditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
-				expressionAttributeNames: { "#pk": "id", "#pin0": "memberCount" },
-				expressionAttributeValues: { ":pin0": 2 },
-			},
-		});
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "session",
-			key: { id: "s1" },
-		});
-
-		await executeTransaction({ documentClient, state });
-
-		const command = sendCalls[0];
-		expect(command).toBeInstanceOf(TransactWriteCommand);
-		if (command instanceof TransactWriteCommand) {
-			expect(command.input.TransactItems).toEqual([
-				{
-					Delete: {
-						TableName: "verification",
-						Key: { id: "v1" },
-						ConditionExpression: "attribute_exists(#pk)",
-						ExpressionAttributeNames: { "#pk": "id" },
-					},
-				},
-				{
-					Update: {
-						TableName: "team",
-						Key: { id: "t1" },
-						UpdateExpression:
-							"SET #inc0 = if_not_exists(#inc0, :zero) + :inc0",
-						ConditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
-						ExpressionAttributeNames: {
-							"#inc0": "memberCount",
-							"#pk": "id",
-							"#pin0": "memberCount",
-						},
-						ExpressionAttributeValues: {
-							":inc0": 1,
-							":zero": 0,
-							":pin0": 2,
-						},
-					},
-				},
-				{
-					Delete: {
-						TableName: "session",
-						Key: { id: "s1" },
-					},
-				},
-			]);
+		expect(error).toBeInstanceOf(DynamoDBAdapterError);
+		if (error instanceof DynamoDBAdapterError) {
+			expect(error.code).toBe("DUPLICATE_PRIMARY_KEY");
 		}
 	});
 
-	test("drops a delete of an item the transaction already deletes", () => {
+	test("rejects a create without the primary key", () => {
+		const error = captureError(() =>
+			bufferTransactionCreate(createTransactionState(), {
+				tableName: "users",
+				keyField: "id",
+				item: { name: "a" },
+			}),
+		);
+
+		expect(error).toBeInstanceOf(DynamoDBAdapterError);
+		if (error instanceof DynamoDBAdapterError) {
+			expect(error.code).toBe("MISSING_PRIMARY_KEY");
+		}
+	});
+
+	test("folds writes to a created row into its creation", async () => {
 		const state = createTransactionState();
-		const condition = {
-			conditionExpression: "attribute_exists(#pk)",
-			expressionAttributeNames: { "#pk": "id" },
-			expressionAttributeValues: {},
-		};
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "verification",
-			key: { id: "v1" },
-			condition,
+		bufferTransactionCreate(state, {
+			tableName: "users",
+			keyField: "id",
+			item: { id: "user-1", name: "a" },
 		});
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "verification",
-			key: { id: "v1" },
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-1", name: "a" },
+			next: { id: "user-1", name: "b" },
 		});
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "verification",
-			key: { id: "v2" },
+		bufferTransactionCreate(state, {
+			tableName: "users",
+			keyField: "id",
+			item: { id: "user-2" },
 		});
-		addTransactionOperation(state, {
-			kind: "delete",
-			tableName: "session",
-			key: { id: "v1" },
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-2" },
+			next: null,
 		});
 
-		expect(state.operations).toEqual([
-			{ kind: "delete", tableName: "verification", key: { id: "v1" }, condition },
-			{ kind: "delete", tableName: "verification", key: { id: "v2" } },
-			{ kind: "delete", tableName: "session", key: { id: "v1" } },
+		expect(await committedItems(state)).toEqual([
+			{
+				Put: {
+					TableName: "users",
+					Item: { id: "user-1", name: "b" },
+					ConditionExpression: "attribute_not_exists(#pk)",
+					ExpressionAttributeNames: { "#pk": "id" },
+				},
+			},
 		]);
+	});
+
+	test("updates a stored row with the difference to its final image", async () => {
+		const state = createTransactionState();
+		const stored = { id: "user-1", name: "a", nickname: "x", visits: 1 };
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: stored,
+			next: { ...stored, name: "b" },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { ...stored, name: "b" },
+			next: { id: "user-1", name: "c", visits: 1 },
+		});
+
+		expect(await committedItems(state)).toEqual([
+			{
+				Update: {
+					TableName: "users",
+					Key: { id: "user-1" },
+					UpdateExpression: "SET #a0 = :v0 REMOVE #a1",
+					ConditionExpression: "attribute_exists(#pk)",
+					ExpressionAttributeNames: {
+						"#a0": "name",
+						"#a1": "nickname",
+						"#pk": "id",
+					},
+					ExpressionAttributeValues: { ":v0": "c" },
+				},
+			},
+		]);
+	});
+
+	test("omits an empty value map for a remove-only update", async () => {
+		const state = createTransactionState();
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-1", nickname: "x" },
+			next: { id: "user-1" },
+		});
+
+		expect(await committedItems(state)).toEqual([
+			{
+				Update: {
+					TableName: "users",
+					Key: { id: "user-1" },
+					UpdateExpression: "REMOVE #a0",
+					ConditionExpression: "attribute_exists(#pk)",
+					ExpressionAttributeNames: { "#a0": "nickname", "#pk": "id" },
+				},
+			},
+		]);
+	});
+
+	test("deletes a stored row once, whatever was buffered before", async () => {
+		const state = createTransactionState();
+		const stored = { id: "user-1", name: "a" };
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: stored,
+			next: { id: "user-1", name: "b" },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-1", name: "b" },
+			next: null,
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: stored,
+			next: null,
+		});
+
+		expect(await committedItems(state)).toEqual([
+			{ Delete: { TableName: "users", Key: { id: "user-1" } } },
+		]);
+	});
+
+	test("pins attributes of the stored row at commit", async () => {
+		const state = createTransactionState();
+		const stored = { id: "v1", value: "secret", note: null };
+		const consumed = bufferTransactionWrite(state, {
+			tableName: "verification",
+			keyField: "id",
+			row: stored,
+			next: null,
+		});
+		pinTransactionFields(consumed, ["id", "value"]);
+		pinTransactionFields(consumed, ["value", "note", "missing"]);
+
+		const counter = { id: "t1", memberCount: 2 };
+		const incremented = bufferTransactionWrite(state, {
+			tableName: "team",
+			keyField: "id",
+			row: counter,
+			next: { id: "t1", memberCount: 3 },
+		});
+		pinTransactionFields(incremented, ["memberCount"]);
+
+		expect(await committedItems(state)).toEqual([
+			{
+				Delete: {
+					TableName: "verification",
+					Key: { id: "v1" },
+					ConditionExpression:
+						"attribute_exists(#pk) AND #pin0 = :pin0 AND #pin1 = :pin1 AND #pin2 = :pin2 AND attribute_not_exists(#pin3)",
+					ExpressionAttributeNames: {
+						"#pk": "id",
+						"#pin0": "id",
+						"#pin1": "value",
+						"#pin2": "note",
+						"#pin3": "missing",
+					},
+					ExpressionAttributeValues: {
+						":pin0": "v1",
+						":pin1": "secret",
+						":pin2": null,
+					},
+				},
+			},
+			{
+				Update: {
+					TableName: "team",
+					Key: { id: "t1" },
+					UpdateExpression: "ADD #a0 :v0",
+					ConditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
+					ExpressionAttributeNames: {
+						"#a0": "memberCount",
+						"#pk": "id",
+						"#pin0": "memberCount",
+					},
+					ExpressionAttributeValues: { ":v0": 1, ":pin0": 2 },
+				},
+			},
+		]);
+	});
+
+	test("checks the pins of a row that ends up unchanged", async () => {
+		const state = createTransactionState();
+		const stored = { id: "user-1", name: "a" };
+		const entry = bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: stored,
+			next: { ...stored },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-2" },
+			next: { id: "user-2" },
+		});
+		pinTransactionFields(entry, ["name"]);
+
+		expect(await committedItems(state)).toEqual([
+			{
+				ConditionCheck: {
+					TableName: "users",
+					Key: { id: "user-1" },
+					ConditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
+					ExpressionAttributeNames: { "#pk": "id", "#pin0": "name" },
+					ExpressionAttributeValues: { ":pin0": "a" },
+				},
+			},
+		]);
+	});
+
+	test("re-creates a row the transaction deleted as an update of the stored row", async () => {
+		const state = createTransactionState();
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "user-1", name: "a", nickname: "x" },
+			next: null,
+		});
+		bufferTransactionCreate(state, {
+			tableName: "users",
+			keyField: "id",
+			item: { id: "user-1", name: "b" },
+		});
+
+		expect(await committedItems(state)).toEqual([
+			{
+				Update: {
+					TableName: "users",
+					Key: { id: "user-1" },
+					UpdateExpression: "SET #a0 = :v0 REMOVE #a1",
+					ConditionExpression: "attribute_exists(#pk)",
+					ExpressionAttributeNames: {
+						"#a0": "name",
+						"#a1": "nickname",
+						"#pk": "id",
+					},
+					ExpressionAttributeValues: { ":v0": "b" },
+				},
+			},
+		]);
+	});
+
+	test("answers reads from the buffered rows", () => {
+		const state = createTransactionState();
+		bufferTransactionCreate(state, {
+			tableName: "users",
+			keyField: "id",
+			item: { id: "created", role: "admin" },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "updated", role: "member" },
+			next: { id: "updated", role: "admin" },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "demoted", role: "admin" },
+			next: { id: "demoted", role: "member" },
+		});
+		bufferTransactionWrite(state, {
+			tableName: "users",
+			keyField: "id",
+			row: { id: "deleted", role: "admin" },
+			next: null,
+		});
+		bufferTransactionCreate(state, {
+			tableName: "sessions",
+			keyField: "id",
+			item: { id: "session", role: "admin" },
+		});
+
+		const admins = applyTransactionOverlay(state, {
+			tableName: "users",
+			keyField: "id",
+			items: [
+				{ id: "stored", role: "admin" },
+				{ id: "demoted", role: "admin" },
+				{ id: "deleted", role: "admin" },
+			],
+			matches: (row) => row.role === "admin",
+		});
+		const untouched = applyTransactionOverlay(state, {
+			tableName: "accounts",
+			keyField: "id",
+			items: [{ id: "account" }],
+			matches: () => true,
+		});
+
+		expect(admins).toEqual([
+			{ id: "stored", role: "admin" },
+			{ id: "created", role: "admin" },
+			{ id: "updated", role: "admin" },
+		]);
+		expect(untouched).toEqual([{ id: "account" }]);
+		expect(hasTransactionItems(state, "users")).toBe(true);
+		expect(hasTransactionItems(state, "accounts")).toBe(false);
 		expect(
-			hasBufferedDelete(state, { tableName: "verification", key: { id: "v1" } }),
-		).toBe(true);
+			findTransactionItem(state, {
+				tableName: "users",
+				keyField: "id",
+				keyValue: "deleted",
+			})?.current,
+		).toBeNull();
 		expect(
-			hasBufferedDelete(state, { tableName: "verification", key: { id: "v3" } }),
-		).toBe(false);
+			findTransactionItem(state, {
+				tableName: "sessions",
+				keyField: "id",
+				keyValue: "deleted",
+			}),
+		).toBeUndefined();
 	});
 });

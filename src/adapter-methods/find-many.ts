@@ -6,6 +6,7 @@ import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import type { AdapterClientContainer } from "./client-container";
+import type { DynamoDBTransactionState } from "../dynamodb/ops/transaction";
 import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
 import {
 	createDynamoDBOperationStatsCollector,
@@ -16,6 +17,7 @@ type FindManyInput = {
 	model: string;
 	where?: Where[] | undefined;
 	limit: number;
+	select?: string[] | undefined;
 	sortBy?: { field: string; direction: "asc" | "desc" } | undefined;
 	offset?: number | undefined;
 	join?: JoinConfig | undefined;
@@ -25,6 +27,7 @@ export type FindManyOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	transactionState?: DynamoDBTransactionState | undefined;
 };
 
 export const createFindManyExecutor = (
@@ -36,18 +39,21 @@ export const createFindManyExecutor = (
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
+		transactionState,
 	} = options;
 	const executePlan = createQueryPlanExecutor({
 		documentClient,
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
+		transactionState,
 	});
 
 	return async ({
 		model,
 		where,
 		limit,
+		select,
 		sortBy,
 		offset,
 		join,
@@ -55,7 +61,7 @@ export const createFindManyExecutor = (
 			const plan = buildQueryPlan({
 				model,
 				where,
-				select: undefined,
+				select,
 			sortBy,
 			limit,
 			offset,

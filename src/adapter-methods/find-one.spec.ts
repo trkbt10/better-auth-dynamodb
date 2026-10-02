@@ -6,7 +6,7 @@ import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { createPrimaryKeyBatchLoader } from "../adapter/batching/primary-key-batch-loader";
 import { createFindOneMethod } from "./find-one";
 import { createDocumentClientStub } from "../../spec/dynamodb-document-client";
-import { addTransactionOperation, createTransactionState } from "../dynamodb/ops/transaction";
+import { bufferTransactionCreate, createTransactionState } from "../dynamodb/ops/transaction";
 
 describe("createFindOneMethod", () => {
 	const getFieldName = (props: { model: string; field: string }) => props.field;
@@ -120,9 +120,9 @@ describe("createFindOneMethod", () => {
 		});
 		const adapterConfig = buildAdapterConfig(documentClient);
 		const transactionState = createTransactionState();
-		addTransactionOperation(transactionState, {
-			kind: "put",
+		bufferTransactionCreate(transactionState, {
 			tableName: "user",
+			keyField: "id",
 			item: { id: "u1", email: "alice@example.com" },
 		});
 		const findOne = createFindOneMethod(
@@ -159,9 +159,9 @@ describe("createFindOneMethod", () => {
 		});
 		const adapterConfig = buildAdapterConfig(documentClient);
 		const transactionState = createTransactionState();
-		addTransactionOperation(transactionState, {
-			kind: "put",
+		bufferTransactionCreate(transactionState, {
 			tableName: "session",
+			keyField: "id",
 			item: { id: "s1", userId: "u2" },
 		});
 		const primaryKeyLoader = createPrimaryKeyBatchLoader({

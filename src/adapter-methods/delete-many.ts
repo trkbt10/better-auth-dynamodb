@@ -1,18 +1,17 @@
 /**
  * @file Delete-many method for the DynamoDB adapter.
  */
-import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
+import { sendConditionalDelete } from "../dynamodb/ops/conditional-write";
 import {
-	addTransactionOperation,
+	bufferTransactionWrite,
 	type DynamoDBTransactionState,
 } from "../dynamodb/ops/transaction";
-import type { DynamoDBItem } from "../adapter/executor/where-evaluator";
 import type { AdapterClientContainer } from "./client-container";
 
 type DeleteExecutionInput = {
@@ -44,6 +43,7 @@ export const createDeleteExecutor = (
 		adapterConfig,
 		getFieldName,
 		getDefaultModelName,
+		transactionState,
 	});
 	const resolveModelTableName = (model: string) =>
 		resolveTableName({
@@ -77,25 +77,25 @@ export const createDeleteExecutor = (
 		const state = { deleted: 0 };
 
 		for (const item of filteredItems) {
-			const key = buildPrimaryKey({
-				item: item as DynamoDBItem,
-				keyField: primaryKeyName,
-			});
 			if (transactionState) {
-				addTransactionOperation(transactionState, {
-					kind: "delete",
+				bufferTransactionWrite(transactionState, {
 					tableName,
-					key,
+					keyField: primaryKeyName,
+					row: item,
+					next: null,
 				});
-			} else {
-				await documentClient.send(
-					new DeleteCommand({
-						TableName: tableName,
-						Key: key,
-					}),
-				);
+				state.deleted += 1;
+				continue;
 			}
-			state.deleted += 1;
+			// A row another caller deleted after it was read is not counted.
+			const result = await sendConditionalDelete(documentClient, {
+				TableName: tableName,
+				Key: buildPrimaryKey({ item, keyField: primaryKeyName }),
+				ReturnValues: "ALL_OLD",
+			});
+			if (result.applied && result.attributes) {
+				state.deleted += 1;
+			}
 		}
 
 		return state.deleted;

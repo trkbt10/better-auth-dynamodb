@@ -13,21 +13,20 @@ import {
 	buildIncrementExpression,
 	hasIncrementAssignments,
 	resolveIncrementAssignments,
-	type IncrementExpression,
 } from "../dynamodb/expressions/build-increment-expression";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
+import { sendConditionalUpdate } from "../dynamodb/ops/conditional-write";
 import {
-	addTransactionOperation,
+	bufferTransactionWrite,
+	pinTransactionFields,
 	type DynamoDBTransactionState,
 } from "../dynamodb/ops/transaction";
-import type { DynamoDBWhere } from "../dynamodb/types";
 import type { AdapterClientContainer } from "./client-container";
 import {
 	MAX_ATOMIC_WRITE_ATTEMPTS,
 	buildConditionInput,
 	createAtomicTargetResolver,
 	createContentionError,
-	sendConditionalUpdate,
 	toDynamoWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
@@ -37,53 +36,31 @@ export const createIncrementOneMethod = (
 	client: AdapterClientContainer,
 	options: AtomicMethodOptions,
 ) => {
+	const { documentClient } = client;
 	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
 		options;
 	const resolveTarget = createAtomicTargetResolver(client, options);
 
 	// The update is buffered until the transaction commits, so the row handed
-	// back is computed from the snapshot. The guard fields and the counters are
-	// pinned: the commit only succeeds while they still hold the values the
-	// returned row was computed from.
+	// back is computed from the row the transaction read. The guard fields and
+	// the counters of the stored row are pinned: the commit only succeeds while
+	// they still hold the values the returned row was computed from.
 	const incrementInTransaction = (props: {
 		state: DynamoDBTransactionState;
 		tableName: string;
-		model: string;
-		where: DynamoDBWhere[];
 		primaryKeyName: string;
 		target: AtomicTarget;
-		expression: IncrementExpression;
-		counterFields: string[];
+		next: AtomicTarget["snapshot"];
+		pinnedFields: string[];
 	}): AtomicTarget["snapshot"] => {
-		const condition = buildAtomicCondition({
-			model: props.model,
-			where: props.where,
-			primaryKeyName: props.primaryKeyName,
-			getFieldName,
-			snapshot: props.target.snapshot,
-			pinnedFields: [
-				...props.where.map((entry) =>
-					getFieldName({ model: props.model, field: entry.field }),
-				),
-				...props.counterFields,
-			],
-		});
-		addTransactionOperation(props.state, {
-			kind: "update",
+		const entry = bufferTransactionWrite(props.state, {
 			tableName: props.tableName,
-			key: props.target.key,
-			updateExpression: props.expression.updateExpression,
-			expressionAttributeNames: props.expression.expressionAttributeNames,
-			expressionAttributeValues: props.expression.expressionAttributeValues,
-			condition: {
-				...condition,
-				conditionExpression: [
-					condition.conditionExpression,
-					...props.expression.counterConditions,
-				].join(" AND "),
-			},
+			keyField: props.primaryKeyName,
+			row: props.target.snapshot,
+			next: props.next,
 		});
-		return props.expression.nextItem;
+		pinTransactionFields(entry, props.pinnedFields);
+		return props.next;
 	};
 
 	return async <T>({
@@ -123,17 +100,20 @@ export const createIncrementOneMethod = (
 				const next = incrementInTransaction({
 					state: transactionState,
 					tableName,
-					model,
-					where: dynamoWhere,
 					primaryKeyName,
 					target,
-					expression,
-					counterFields: Object.keys(assignments.increment),
+					next: expression.nextItem,
+					pinnedFields: [
+						...dynamoWhere.map((entry) =>
+							getFieldName({ model, field: entry.field }),
+						),
+						...Object.keys(assignments.increment),
+					],
 				});
 				return next as T;
 			}
 
-			const result = await sendConditionalUpdate(client, {
+			const result = await sendConditionalUpdate(documentClient, {
 				TableName: tableName,
 				Key: target.key,
 				UpdateExpression: expression.updateExpression,

@@ -139,32 +139,19 @@ const createDynamoDbCustomizer = (props: {
       adapterConfig,
       getFieldName,
       getDefaultModelName,
+      transactionState,
     };
     const countOptions: CountMethodOptions = sharedOptions;
-    const updateOptions: UpdateMethodOptions = {
-      ...sharedOptions,
-      transactionState,
-    };
-    const deleteOptions: DeleteMethodOptions = {
-      ...sharedOptions,
-      transactionState,
-    };
-    const createOptions: CreateMethodOptions = {
-      adapterConfig,
-      getDefaultModelName,
-      transactionState,
-    };
-    const atomicOptions: AtomicMethodOptions = {
-      ...sharedOptions,
-      transactionState,
-    };
+    const updateOptions: UpdateMethodOptions = sharedOptions;
+    const deleteOptions: DeleteMethodOptions = sharedOptions;
+    const createOptions: CreateMethodOptions = sharedOptions;
+    const atomicOptions: AtomicMethodOptions = sharedOptions;
 
     return {
       create: createCreateMethod(adapterClient, createOptions),
       findOne: createFindOneMethod(adapterClient, {
         ...sharedOptions,
         primaryKeyLoader,
-        transactionState,
       }),
       findMany: createFindManyMethod(adapterClient, sharedOptions),
       count: createCountMethod(adapterClient, countOptions),

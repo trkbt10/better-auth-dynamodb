@@ -11,6 +11,10 @@ import { queryCount } from "../dynamodb/ops/query";
 import { scanCount } from "../dynamodb/ops/scan";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
+import {
+	hasTransactionItems,
+	type DynamoDBTransactionState,
+} from "../dynamodb/ops/transaction";
 import type { AdapterClientContainer } from "./client-container";
 import { formatAdapterQueryPlan } from "../adapter/explain/format-query-plan";
 import {
@@ -22,6 +26,7 @@ export type CountMethodOptions = {
 	adapterConfig: ResolvedDynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	transactionState?: DynamoDBTransactionState | undefined;
 };
 
 export const createCountMethod = (
@@ -29,7 +34,8 @@ export const createCountMethod = (
 	options: CountMethodOptions,
 ) => {
 	const { documentClient } = client;
-	const { adapterConfig, getFieldName, getDefaultModelName } = options;
+	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
+		options;
 
 		const resolveScanMaxPages = (): number => {
 			if (adapterConfig.scanPageLimitMode === "unbounded") {
@@ -86,33 +92,40 @@ export const createCountMethod = (
 				);
 			}
 
-		if (plan.execution.requiresClientFilter) {
-			const executePlan = createQueryPlanExecutor({
-				documentClient,
-				adapterConfig,
-				getFieldName,
-				getDefaultModelName,
-			});
-			const items = await executePlan(plan, { operationStats });
-			return finalize(items.length);
-		}
-
-		if (plan.execution.baseStrategy.kind === "batch-get") {
-			const executePlan = createQueryPlanExecutor({
-				documentClient,
-				adapterConfig,
-				getFieldName,
-				getDefaultModelName,
-			});
-			const items = await executePlan(plan, { operationStats });
-			return finalize(items.length);
-		}
-
 		const tableName = resolveTableName({
 			model,
 			getDefaultModelName,
 			config: adapterConfig,
 		});
+		// DynamoDB can only count stored rows. Rows the transaction has written
+		// to have to be counted from its overlay, i.e. through the executor.
+		const countsBufferedRows = (): boolean => {
+			if (!transactionState) {
+				return false;
+			}
+			return hasTransactionItems(transactionState, tableName);
+		};
+		const requiresExecutor = (): boolean => {
+			if (plan.execution.requiresClientFilter) {
+				return true;
+			}
+			if (plan.execution.baseStrategy.kind === "batch-get") {
+				return true;
+			}
+			return countsBufferedRows();
+		};
+
+		if (requiresExecutor()) {
+			const executePlan = createQueryPlanExecutor({
+				documentClient,
+				adapterConfig,
+				getFieldName,
+				getDefaultModelName,
+				transactionState,
+			});
+			const items = await executePlan(plan, { operationStats });
+			return finalize(items.length);
+		}
 
 		const whereFilters = plan.base.where.map((entry) => ({
 			field: entry.field,

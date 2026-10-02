@@ -234,7 +234,7 @@ describe("createConsumeOneMethod", () => {
 		).toHaveLength(MAX_ATOMIC_WRITE_ATTEMPTS);
 	});
 
-	test("buffers a conditional delete and returns the snapshot inside a transaction", async () => {
+	test("buffers a pinned delete and returns the row it read inside a transaction", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {
 				if (command instanceof GetCommand) {
@@ -261,26 +261,14 @@ describe("createConsumeOneMethod", () => {
 		expect(first).toEqual({ id: "v1", value: "secret" });
 		expect(second).toBeNull();
 		expect(sendCalls.some((call) => call instanceof DeleteCommand)).toBe(false);
-		expect(transactionState.operations).toEqual([
+		expect(transactionState.items).toEqual([
 			{
-				kind: "delete",
 				tableName: "verification",
+				keyField: "id",
 				key: { id: "v1" },
-				condition: {
-					conditionExpression:
-						"attribute_exists(#pk) AND (#f0 = :v0) AND #pin0 = :pin0 AND #pin1 = :pin1",
-					expressionAttributeNames: {
-						"#pk": "id",
-						"#f0": "id",
-						"#pin0": "id",
-						"#pin1": "value",
-					},
-					expressionAttributeValues: {
-						":v0": "v1",
-						":pin0": "v1",
-						":pin1": "secret",
-					},
-				},
+				base: { id: "v1", value: "secret" },
+				current: null,
+				pinnedFields: ["id", "value"],
 			},
 		]);
 	});

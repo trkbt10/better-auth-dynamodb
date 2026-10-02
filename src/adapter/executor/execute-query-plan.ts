@@ -19,6 +19,12 @@ import { batchGetItems } from "../../dynamodb/ops/batch-get";
 import { resolveTableName } from "../../dynamodb/mapping/resolve-table-name";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
 import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
+import {
+	applyTransactionOverlay,
+	hasTransactionItems,
+	type DynamoDBTransactionState,
+} from "../../dynamodb/ops/transaction";
+import { applyWhereFilters } from "./where-evaluator";
 
 export type AdapterExecutionContext = {
 	operationStats?: DynamoDBOperationStatsCollector | undefined;
@@ -285,11 +291,44 @@ const applyOffsetLimit = <T>(props: {
 	return props.items.slice(offset, offset + props.limit);
 };
 
+// Rows the transaction has written to are answered from its overlay, so the
+// stored rows have to be read in full: a limit or an order applied by DynamoDB
+// would be applied to rows the overlay then replaces or removes.
+const resolveOverlayTable = (props: {
+	plan: AdapterQueryPlan;
+	transactionState: DynamoDBTransactionState | undefined;
+	adapterConfig: DynamoDBAdapterConfig;
+	getDefaultModelName: (model: string) => string;
+}): string | undefined => {
+	if (!props.transactionState) {
+		return undefined;
+	}
+	const tableName = resolveTableName({
+		model: props.plan.base.model,
+		getDefaultModelName: props.getDefaultModelName,
+		config: props.adapterConfig,
+	});
+	if (!hasTransactionItems(props.transactionState, tableName)) {
+		return undefined;
+	}
+	return tableName;
+};
+
+const withoutServerLimitAndSort = (plan: AdapterQueryPlan): AdapterQueryPlan => ({
+	...plan,
+	execution: {
+		...plan.execution,
+		fetchLimit: undefined,
+		serverSort: undefined,
+	},
+});
+
 export const createQueryPlanExecutor = (props: {
 	documentClient: DynamoDBDocumentClient;
 	adapterConfig: DynamoDBAdapterConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
+	transactionState?: DynamoDBTransactionState | undefined;
 }) => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
@@ -297,10 +336,40 @@ export const createQueryPlanExecutor = (props: {
 			"createQueryPlanExecutor requires explicit props.",
 		);
 	}
-	return async (
+	const resolveOverlaidItems = (
 		plan: AdapterQueryPlan,
+		overlayTable: string | undefined,
+		items: DynamoDBItem[],
+	): DynamoDBItem[] => {
+		if (!props.transactionState || overlayTable === undefined) {
+			return items;
+		}
+		return applyTransactionOverlay(props.transactionState, {
+			tableName: overlayTable,
+			keyField: props.getFieldName({ model: plan.base.model, field: "id" }),
+			items,
+			matches: (item) =>
+				applyWhereFilters({ items: [item], where: plan.base.where }).length === 1,
+		});
+	};
+
+	return async (
+		requestedPlan: AdapterQueryPlan,
 		context?: AdapterExecutionContext | undefined,
 	): Promise<DynamoDBItem[]> => {
+		const overlayTable = resolveOverlayTable({
+			plan: requestedPlan,
+			transactionState: props.transactionState,
+			adapterConfig: props.adapterConfig,
+			getDefaultModelName: props.getDefaultModelName,
+		});
+		const resolvePlan = (): AdapterQueryPlan => {
+			if (overlayTable === undefined) {
+				return requestedPlan;
+			}
+			return withoutServerLimitAndSort(requestedPlan);
+		};
+		const plan = resolvePlan();
 		const baseItems = await fetchBaseItems({
 			plan,
 			documentClient: props.documentClient,
@@ -314,11 +383,15 @@ export const createQueryPlanExecutor = (props: {
 			strategy: plan.execution.baseStrategy,
 			requiresClientFilter: plan.execution.requiresClientFilter,
 		});
-		const filteredItems = applyClientFilter({
-			items: baseItems,
-			where: plan.base.where,
-			requiresClientFilter,
-		});
+		const filteredItems = resolveOverlaidItems(
+			plan,
+			overlayTable,
+			applyClientFilter({
+				items: baseItems,
+				where: plan.base.where,
+				requiresClientFilter,
+			}),
+		);
 
 		const sortedItems = resolveSortedItems({
 			items: filteredItems,
@@ -343,6 +416,7 @@ export const createQueryPlanExecutor = (props: {
 					getFieldName: props.getFieldName,
 					getDefaultModelName: props.getDefaultModelName,
 					operationStats: context?.operationStats,
+					transactionState: props.transactionState,
 				});
 			},
 			Promise.resolve(limitedItems),

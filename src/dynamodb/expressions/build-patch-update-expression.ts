@@ -218,14 +218,20 @@ const concatExpressions = (entries: ExpressionEntry[]) => {
 	};
 };
 
-export const buildPatchUpdateExpression = (props: {
-	prev: Record<string, unknown>;
-	next: Record<string, unknown>;
-}): {
+export type PatchUpdateExpression = {
 	updateExpression: string;
 	expressionAttributeNames: Record<string, string>;
 	expressionAttributeValues: Record<string, NativeAttributeValue>;
-} => {
+};
+
+/**
+ * Build the update expression that turns `prev` into `next`, or `undefined`
+ * when the two are already equal and there is nothing to write.
+ */
+export const resolvePatchUpdateExpression = (props: {
+	prev: Record<string, unknown>;
+	next: Record<string, unknown>;
+}): PatchUpdateExpression | undefined => {
 	if (!props) {
 		throw new DynamoDBAdapterError(
 			"INVALID_UPDATE",
@@ -235,10 +241,7 @@ export const buildPatchUpdateExpression = (props: {
 
 	const changes = compareTwoObjects([], props.prev, props.next);
 	if (changes.length === 0) {
-		throw new DynamoDBAdapterError(
-			"INVALID_UPDATE",
-			"Update payload must include at least one defined value.",
-		);
+		return undefined;
 	}
 
 	const makeNameKey = uniqueAttributeKeyCreator("a");
@@ -253,10 +256,7 @@ export const buildPatchUpdateExpression = (props: {
 	const expression = concatExpressions(entries);
 
 	if (!expression.updateExpression) {
-		throw new DynamoDBAdapterError(
-			"INVALID_UPDATE",
-			"Update payload must include at least one defined value.",
-		);
+		return undefined;
 	}
 
 	return {
@@ -264,4 +264,18 @@ export const buildPatchUpdateExpression = (props: {
 		expressionAttributeNames: expression.attributeNames,
 		expressionAttributeValues: expression.attributeValues,
 	};
+};
+
+export const buildPatchUpdateExpression = (props: {
+	prev: Record<string, unknown>;
+	next: Record<string, unknown>;
+}): PatchUpdateExpression => {
+	const expression = resolvePatchUpdateExpression(props);
+	if (!expression) {
+		throw new DynamoDBAdapterError(
+			"INVALID_UPDATE",
+			"Update payload must include at least one defined value.",
+		);
+	}
+	return expression;
 };

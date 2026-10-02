@@ -72,10 +72,6 @@ const basicSuiteDisabledTests = {
 	"findOne - should find a model with modified model name": true,
 	// ValidationException: The table does not have the specified index: one_to_one_table_one_to_one_idx
 	"findOne - should join a model with modified field name": true,
-	// expect(received).toSatisfy(): findMany returns every attribute although select is ["id", "email"]
-	"findMany - should select fields": true,
-	// DynamoDBAdapterError: Update payload must include at least one defined value. (updateMany to an unchanged value)
-	"deleteMany - should delete many models with boolean values": true,
 };
 
 const { execute } = await testAdapter({
@@ -84,12 +80,7 @@ const { execute } = await testAdapter({
 	prefixTests: "multi-table",
 	tests: [
 		normalTestSuite({ disableTests: basicSuiteDisabledTests }),
-		transactionsTestSuite({
-			disableTests: {
-				// expected [] to have a length of 1 but got +0: tx.findMany does not see the row created earlier in the same transaction
-				"transaction - should rollback failing transaction": true,
-			},
-		}),
+		transactionsTestSuite(),
 		authFlowTestSuite(),
 		joinsTestSuite({ disableTests: basicSuiteDisabledTests }),
 		caseInsensitiveTestSuite({

@@ -48,7 +48,7 @@ describe("dynamodbAdapter", () => {
 		expect(sendCalls[0]).toBeInstanceOf(TransactWriteCommand);
 	});
 
-	test("includes update and delete in transaction", async () => {
+	test("folds an update and a delete of one row into a single transaction item", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({
 			respond: async (command) => {
 				if (command instanceof QueryCommand) {
@@ -88,7 +88,71 @@ describe("dynamodbAdapter", () => {
 		if (!transactionCommand) {
 			throw new Error("Expected a TransactWriteCommand to be sent.");
 		}
-		expect(transactionCommand.input.TransactItems?.length).toBe(2);
+		// TransactWriteItems rejects two operations on one item.
+		expect(transactionCommand.input.TransactItems).toEqual([
+			{ Delete: { TableName: "auth_user", Key: { id: "user_1" } } },
+		]);
+	});
+
+	test("sends one transaction item per row", async () => {
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					const id = command.input.ExpressionAttributeValues?.[":pk"];
+					return { Items: [{ id, name: "user" }], LastEvaluatedKey: undefined };
+				}
+				return {};
+			},
+		});
+		const adapter = dynamodbAdapter({
+			documentClient,
+			tableNamePrefix: "auth_",
+			transaction: true,
+			indexNameResolver,
+		})({});
+
+		await adapter.transaction(async (tx) => {
+			await tx.update({
+				model: "user",
+				where: [{ field: "id", value: "user_1" }],
+				update: { name: "updated" },
+			});
+			await tx.update({
+				model: "user",
+				where: [{ field: "id", value: "user_1" }],
+				update: { name: "updated twice" },
+			});
+			await tx.delete({
+				model: "user",
+				where: [{ field: "id", value: "user_2" }],
+			});
+		});
+
+		const transactionCommand = sendCalls.find(
+			(command): command is TransactWriteCommand =>
+				command instanceof TransactWriteCommand,
+		);
+		// Better Auth adds `updatedAt` to every update, hence the second attribute.
+		expect(transactionCommand?.input.TransactItems).toEqual([
+			{
+				Update: {
+					TableName: "auth_user",
+					Key: { id: "user_1" },
+					UpdateExpression: "SET #a0 = :v0,#a1 = :v1",
+					ConditionExpression: "attribute_exists(#pk)",
+					ExpressionAttributeNames: {
+						"#a0": "name",
+						"#a1": "updatedAt",
+						"#pk": "id",
+					},
+					ExpressionAttributeValues: {
+						":v0": "updated twice",
+						":v1": expect.any(String),
+					},
+				},
+			},
+			{ Delete: { TableName: "auth_user", Key: { id: "user_2" } } },
+		]);
 	});
 
 	test("creates items with PutCommand", async () => {

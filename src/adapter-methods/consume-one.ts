@@ -12,12 +12,12 @@ import {
 	canEvaluateWhereOnServer,
 } from "../dynamodb/expressions/build-atomic-condition";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
+import { sendConditionalDelete } from "../dynamodb/ops/conditional-write";
 import {
-	addTransactionOperation,
-	hasBufferedDelete,
+	bufferTransactionWrite,
+	pinTransactionFields,
 	type DynamoDBTransactionState,
 } from "../dynamodb/ops/transaction";
-import type { DynamoDBWhere } from "../dynamodb/types";
 import type { AdapterClientContainer } from "./client-container";
 import {
 	MAX_ATOMIC_WRITE_ATTEMPTS,
@@ -25,7 +25,6 @@ import {
 	createAtomicTargetResolver,
 	createContentionError,
 	resolvePinnedPrimaryKey,
-	sendConditionalDelete,
 	toDynamoWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
@@ -35,38 +34,27 @@ export const createConsumeOneMethod = (
 	client: AdapterClientContainer,
 	options: AtomicMethodOptions,
 ) => {
+	const { documentClient } = client;
 	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
 		options;
 	const resolveTarget = createAtomicTargetResolver(client, options);
 
 	// The delete is buffered until the transaction commits, so the row handed
-	// back is the snapshot. Every snapshot attribute is pinned: the commit only
-	// succeeds while the stored row is still the one that was returned.
+	// back is the one the transaction read. Every attribute of the stored row
+	// is pinned: the commit only succeeds while it is still the row returned.
 	const consumeInTransaction = (props: {
 		state: DynamoDBTransactionState;
 		tableName: string;
-		model: string;
-		where: DynamoDBWhere[];
 		primaryKeyName: string;
 		target: AtomicTarget;
-	}): AtomicTarget["snapshot"] | null => {
-		const buffered = { tableName: props.tableName, key: props.target.key };
-		if (hasBufferedDelete(props.state, buffered)) {
-			return null;
-		}
-		addTransactionOperation(props.state, {
-			kind: "delete",
+	}): AtomicTarget["snapshot"] => {
+		const entry = bufferTransactionWrite(props.state, {
 			tableName: props.tableName,
-			key: props.target.key,
-			condition: buildAtomicCondition({
-				model: props.model,
-				where: props.where,
-				primaryKeyName: props.primaryKeyName,
-				getFieldName,
-				snapshot: props.target.snapshot,
-				pinnedFields: Object.keys(props.target.snapshot),
-			}),
+			keyField: props.primaryKeyName,
+			row: props.target.snapshot,
+			next: null,
 		});
+		pinTransactionFields(entry, Object.keys(entry.base ?? {}));
 		return props.target.snapshot;
 	};
 
@@ -93,12 +81,10 @@ export const createConsumeOneMethod = (
 			const consumed = consumeInTransaction({
 				state: transactionState,
 				tableName,
-				model,
-				where: dynamoWhere,
 				primaryKeyName,
 				target,
 			});
-			return consumed as T | null;
+			return consumed as T;
 		}
 
 		// A where clause that pins the primary key and that DynamoDB can evaluate
@@ -113,7 +99,7 @@ export const createConsumeOneMethod = (
 			if (pinned.value === undefined || pinned.value === null) {
 				return null;
 			}
-			const result = await sendConditionalDelete(client, {
+			const result = await sendConditionalDelete(documentClient, {
 				TableName: tableName,
 				Key: { [primaryKeyName]: pinned.value },
 				...buildConditionInput(
@@ -137,7 +123,7 @@ export const createConsumeOneMethod = (
 			if (!target) {
 				return null;
 			}
-			const result = await sendConditionalDelete(client, {
+			const result = await sendConditionalDelete(documentClient, {
 				TableName: tableName,
 				Key: target.key,
 				...buildConditionInput(
