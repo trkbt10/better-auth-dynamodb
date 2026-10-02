@@ -1,3 +1,6 @@
+/**
+ * @file Update-many method for the DynamoDB adapter.
+ */
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { type DynamoDBTransactionState } from "../dynamodb/ops/transaction";

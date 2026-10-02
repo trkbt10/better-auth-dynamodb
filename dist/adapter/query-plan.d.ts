@@ -19,6 +19,10 @@ export type NormalizedWhere = {
     operator: "eq" | "ne" | "lt" | "lte" | "gt" | "gte" | "in" | "not_in" | "contains" | "starts_with" | "ends_with";
     value: unknown;
     connector: "AND" | "OR";
+    /**
+     * Case sensitivity of string comparisons; sensitive when omitted.
+     */
+    mode?: "sensitive" | "insensitive" | undefined;
     requiresClientFilter: boolean;
 };
 export type BaseQueryPlan = {

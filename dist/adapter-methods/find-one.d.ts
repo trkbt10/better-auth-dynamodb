@@ -5,7 +5,7 @@ import type { JoinConfig, Where } from "@better-auth/core/db/adapter";
 import type { FindManyOptions } from "./find-many";
 import type { AdapterClientContainer } from "./client-container";
 import type { PrimaryKeyBatchLoader } from "../adapter/batching/primary-key-batch-loader";
-import type { DynamoDBTransactionState } from "../dynamodb/ops/transaction";
+import { type DynamoDBTransactionState } from "../dynamodb/ops/transaction";
 type FindOneOptions = FindManyOptions & {
     primaryKeyLoader?: PrimaryKeyBatchLoader | undefined;
     transactionState?: DynamoDBTransactionState | undefined;

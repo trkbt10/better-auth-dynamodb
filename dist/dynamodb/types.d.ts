@@ -34,10 +34,12 @@ export type IndexResolverBundle = {
 };
 export type DynamoDBWhereOperator = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "contains" | "starts_with" | "ends_with";
 export type DynamoDBWhereConnector = "AND" | "OR";
+export type DynamoDBWhereMode = "sensitive" | "insensitive";
 export type DynamoDBWhere = {
     field: string;
     operator?: DynamoDBWhereOperator | undefined;
     value: unknown;
     connector?: DynamoDBWhereConnector | undefined;
+    mode?: DynamoDBWhereMode | undefined;
 };
 //# sourceMappingURL=types.d.ts.map

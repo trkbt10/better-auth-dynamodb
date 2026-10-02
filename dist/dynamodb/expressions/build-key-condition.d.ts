@@ -24,5 +24,40 @@ export declare const buildKeyCondition: (props: {
     expressionAttributeValues: Record<string, NativeAttributeValue>;
     indexName?: string | undefined;
     remainingWhere: DynamoDBWhere[];
+    /**
+     * Key attributes of the table or index the query runs on. DynamoDB rejects
+     * a FilterExpression that references any of them.
+     */
+    keyAttributes: string[];
 } | null;
+/**
+ * Pick the where entries a Query may send as its FilterExpression.
+ *
+ * Entries on a key attribute of the queried table or index are left out,
+ * because DynamoDB rejects them there; the caller evaluates the full where
+ * clause in memory afterwards. What remains is still a necessary condition:
+ * a subset of the AND group, plus the OR group only when it is complete.
+ */
+export declare const selectQueryFilterWhere: (props: {
+    model: string;
+    where: DynamoDBWhere[];
+    keyAttributes: string[];
+    getFieldName: (args: {
+        model: string;
+        field: string;
+    }) => string;
+}) => DynamoDBWhere[];
+/**
+ * Whether a Query for this where clause leaves entries on key attributes that
+ * cannot go into its FilterExpression.
+ */
+export declare const hasKeyAttributeFilter: (props: {
+    model: string;
+    where: DynamoDBWhere[];
+    keyAttributes: string[];
+    getFieldName: (args: {
+        model: string;
+        field: string;
+    }) => string;
+}) => boolean;
 //# sourceMappingURL=build-key-condition.d.ts.map

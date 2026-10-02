@@ -73,6 +73,16 @@ export type ResolvedDynamoDBAdapterConfig = {
         indexName: string;
     }) => DynamoDBIndexKeySchema | undefined) | undefined;
     transaction: boolean;
+    /**
+     * Maps a default model name to the model name the Better Auth schema
+     * declares for it. Set per adapter instance, once the schema is known.
+     */
+    resolveSchemaModelName?: ((defaultModelName: string) => string | undefined) | undefined;
+    /**
+     * Lists the attributes of a model that are keys of a global secondary index.
+     * Set per adapter instance, once the schema is known.
+     */
+    resolveIndexKeyAttributes?: ((model: string) => string[]) | undefined;
 };
 export declare const dynamodbAdapter: (config: DynamoDBAdapterConfig) => (options: BetterAuthOptions) => DBAdapter<BetterAuthOptions>;
 export {};

@@ -1,6 +1,3 @@
-/**
- * @file Sorting helpers for adapter executor.
- */
 export declare const sortItems: <T extends Record<string, unknown>>(items: T[], props: {
     field: string;
     direction: "asc" | "desc";

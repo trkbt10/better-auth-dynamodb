@@ -6,6 +6,7 @@ import type { DynamoDBAdapterConfig } from "../../adapter";
 import type { AdapterQueryPlan } from "../query-plan";
 import type { DynamoDBItem } from "./where-evaluator";
 import type { DynamoDBOperationStatsCollector } from "../../dynamodb/ops/operation-stats";
+import { type DynamoDBTransactionState } from "../../dynamodb/ops/transaction";
 export type AdapterExecutionContext = {
     operationStats?: DynamoDBOperationStatsCollector | undefined;
 };
@@ -17,5 +18,6 @@ export declare const createQueryPlanExecutor: (props: {
         field: string;
     }) => string;
     getDefaultModelName: (model: string) => string;
-}) => (plan: AdapterQueryPlan, context?: AdapterExecutionContext | undefined) => Promise<DynamoDBItem[]>;
+    transactionState?: DynamoDBTransactionState | undefined;
+}) => (requestedPlan: AdapterQueryPlan, context?: AdapterExecutionContext | undefined) => Promise<DynamoDBItem[]>;
 //# sourceMappingURL=execute-query-plan.d.ts.map
