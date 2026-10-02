@@ -296,14 +296,14 @@ describe("transaction helpers", () => {
 				Update: {
 					TableName: "team",
 					Key: { id: "t1" },
-					UpdateExpression: "ADD #a0 :v0",
+					UpdateExpression: "SET #a0 = :v0",
 					ConditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
 					ExpressionAttributeNames: {
 						"#a0": "memberCount",
 						"#pk": "id",
 						"#pin0": "memberCount",
 					},
-					ExpressionAttributeValues: { ":v0": 1, ":pin0": 2 },
+					ExpressionAttributeValues: { ":v0": 3, ":pin0": 2 },
 				},
 			},
 		]);

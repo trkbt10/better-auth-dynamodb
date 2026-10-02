@@ -5,7 +5,7 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { DynamoDBAdapterError } from "../errors/errors";
 
 type ExpressionEntry = {
-	kind: "add" | "set" | "remove" | "noop";
+	kind: "set" | "remove" | "noop";
 	expression: string;
 	attributeNames: Record<string, string>;
 	attributeValues: Record<string, NativeAttributeValue>;
@@ -67,11 +67,20 @@ const uniqueAttributeKeyCreator = (prefix: string): ((seed: string) => string) =
 	};
 };
 
+// Every assigned value gets a placeholder of its own. Sharing one between
+// equal-looking values would hand the string "5" and the number 5 the same
+// placeholder, and one of the two attributes the wrong value.
+const createValueKeySequence = (prefix: string): (() => string) => {
+	const counter = { value: 0 };
+	return (): string => {
+		const key = `${prefix}${counter.value}`;
+		counter.value += 1;
+		return key;
+	};
+};
+
 const isRemoved = (prev: unknown, next: unknown): boolean =>
 	typeof prev !== "undefined" && typeof next === "undefined";
-
-const isComputation = (prev: unknown, next: unknown): prev is number =>
-	typeof prev === "number" && typeof next === "number";
 
 const isReplaced = (prev: unknown, next: unknown): boolean =>
 	typeof prev !== typeof next;
@@ -79,26 +88,12 @@ const isReplaced = (prev: unknown, next: unknown): boolean =>
 const isUpdated = (prev: unknown, next: unknown): boolean =>
 	typeof prev === typeof next;
 
-const toValueSeed = (value: unknown): string => {
-	if (typeof value === "string") {
-		return value;
-	}
-	try {
-		return JSON.stringify(value);
-	} catch {
-		throw new DynamoDBAdapterError(
-			"INVALID_UPDATE",
-			"Failed to serialize update value.",
-		);
-	}
-};
-
 const buildExpressionEntry = (props: {
 	path: Array<string | number>;
 	prev: unknown;
 	next: unknown;
 	makeNameKey: (seed: string) => string;
-	makeValueKey: (seed: string) => string;
+	makeValueKey: () => string;
 }): ExpressionEntry => {
 	if (Object.is(props.prev, props.next)) {
 		return {
@@ -143,21 +138,11 @@ const buildExpressionEntry = (props: {
 		};
 	}
 
-	if (isComputation(props.prev, props.next)) {
-		const gap = (props.next as number) - props.prev;
-		const valueKey = props.makeValueKey(toValueSeed(gap));
-		return {
-			kind: "add",
-			expression: `${expressionKey} :${valueKey}`,
-			attributeNames,
-			attributeValues: {
-				[`:${valueKey}`]: gap as NativeAttributeValue,
-			},
-		};
-	}
-
+	// A changed value is assigned as it is. A number is not turned into an
+	// `ADD` of the difference to the row that was read: the update sets a
+	// value, and a delta would add up with concurrent writes.
 	if (isUpdated(props.prev, props.next) || isReplaced(props.prev, props.next)) {
-		const valueKey = props.makeValueKey(toValueSeed(props.next));
+		const valueKey = props.makeValueKey();
 		return {
 			kind: "set",
 			expression: `${expressionKey} = :${valueKey}`,
@@ -245,7 +230,7 @@ export const resolvePatchUpdateExpression = (props: {
 	}
 
 	const makeNameKey = uniqueAttributeKeyCreator("a");
-	const makeValueKey = uniqueAttributeKeyCreator("v");
+	const makeValueKey = createValueKeySequence("v");
 	const entries = changes.map((change) =>
 		buildExpressionEntry({
 			...change,

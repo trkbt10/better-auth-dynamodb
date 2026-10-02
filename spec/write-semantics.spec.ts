@@ -29,6 +29,12 @@ type SessionRow = { id: string; userId: string; token: string };
 const options: BetterAuthOptions = {
 	secret: "test-secret-at-least-32-characters-long!!",
 	baseURL: "http://localhost:3000",
+	user: {
+		additionalFields: {
+			loginCount: { type: "number", required: false },
+			nickname: { type: "string", required: false },
+		},
+	},
 };
 
 const isUpdateCommand = (command: unknown): command is UpdateCommand =>
@@ -148,6 +154,53 @@ describe("single-row writes on DynamoDB Local", () => {
 		expect(updated).toBeNull();
 		expect(await findUser(user.id)).toBeNull();
 		expect(await scanUsers("vanish@example.com")).toHaveLength(0);
+	});
+
+	test("update sets a number to the given value, whatever was written in between", async () => {
+		const user = await createUser({ email: "absolute@example.com", loginCount: 2 });
+		const racing = createInterleavingClient({
+			shouldInterfere: isUpdateCommand,
+			interfere: async () => {
+				await documentClient.send(
+					new UpdateCommand({
+						TableName: environment.tableName("user"),
+						Key: { id: user.id },
+						UpdateExpression: "SET #c = :c",
+						ExpressionAttributeNames: { "#c": "loginCount" },
+						ExpressionAttributeValues: { ":c": 10 },
+					}),
+				);
+			},
+		});
+
+		const updated = await environment
+			.createAdapter({ documentClient: racing.documentClient })
+			.update<UserRow & { loginCount: number }>({
+				model: "user",
+				where: [{ field: "id", value: user.id }],
+				update: { loginCount: 5 },
+			});
+
+		expect(racing.interferences()).toBe(1);
+		expect(updated?.loginCount).toBe(5);
+		expect(await findUser(user.id)).toMatchObject({ loginCount: 5 });
+	});
+
+	test("update keeps a string and a number that look alike apart", async () => {
+		const user = await createUser({
+			email: "alike@example.com",
+			loginCount: 0,
+			nickname: "before",
+		});
+
+		const updated = await adapter.update<UserRow>({
+			model: "user",
+			where: [{ field: "id", value: user.id }],
+			update: { nickname: "5", loginCount: 5 },
+		});
+
+		expect(updated).toMatchObject({ nickname: "5", loginCount: 5 });
+		expect(await findUser(user.id)).toMatchObject({ nickname: "5", loginCount: 5 });
 	});
 
 	test("update to the stored values succeeds without changing the row", async () => {

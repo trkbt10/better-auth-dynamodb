@@ -14,15 +14,32 @@ describe("buildPatchUpdateExpression", () => {
 		return undefined;
 	};
 
-test("builds add expression for numeric changes", () => {
+test("assigns a changed number as an absolute value", () => {
 		const result = buildPatchUpdateExpression({
 			prev: { name: "Ada", age: 20 },
 			next: { name: "Ada", age: 21 },
 		});
 
-	expect(result.updateExpression).toContain("ADD");
+		expect(result.updateExpression).toBe("SET #a0 = :v0");
 		expect(result.expressionAttributeNames).toEqual({ "#a0": "age" });
-		expect(result.expressionAttributeValues).toEqual({ ":v0": 1 });
+		expect(result.expressionAttributeValues).toEqual({ ":v0": 21 });
+	});
+
+	test("gives values that look alike a placeholder each", () => {
+		const result = buildPatchUpdateExpression({
+			prev: { name: "Alice", count: 0, flag: "x", note: "y" },
+			next: { name: "5", count: 5, flag: "true", note: true },
+		});
+
+		expect(result.updateExpression).toBe(
+			"SET #a0 = :v0,#a1 = :v1,#a2 = :v2,#a3 = :v3",
+		);
+		expect(result.expressionAttributeValues).toEqual({
+			":v0": "5",
+			":v1": 5,
+			":v2": "true",
+			":v3": true,
+		});
 	});
 
 	test("builds remove expression for undefined", () => {
