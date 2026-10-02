@@ -12,4 +12,3 @@ export declare const resolveJoinPlan: (props: {
     }) => string;
     adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 }) => JoinPlan[];
-//# sourceMappingURL=resolve-join-plan.d.ts.map

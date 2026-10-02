@@ -46,4 +46,3 @@ export declare const buildIncrementExpression: (props: {
     snapshot: Record<string, NativeAttributeValue>;
     assignments: IncrementAssignments;
 }) => IncrementExpression;
-//# sourceMappingURL=build-increment-expression.d.ts.map

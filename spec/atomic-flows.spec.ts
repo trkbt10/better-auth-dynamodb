@@ -199,17 +199,14 @@ describe("database rate limiting", () => {
 		).toMatchObject([{ count: max }]);
 	});
 
-	test("never admits more than the limit under concurrent requests", async () => {
-		// The first request creates the counter row; the burst then races on it.
-		expect(await requestFrom("203.0.113.20")).toBe(200);
-
+	test("never admits more than the limit under concurrent first requests", async () => {
 		const statuses = await Promise.all(
 			Array.from({ length: 12 }, () => requestFrom("203.0.113.20")),
 		);
 
-		expect(statuses.filter((status) => status === 200)).toHaveLength(max - 1);
+		expect(statuses.filter((status) => status === 200)).toHaveLength(max);
 		expect(statuses.filter((status) => status === 429)).toHaveLength(
-			12 - (max - 1),
+			12 - max,
 		);
 		const counters = await readCounters();
 		expect(

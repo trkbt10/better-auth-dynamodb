@@ -1,16 +1,16 @@
-import { createAdapterFactory as Te } from "@better-auth/core/db/adapter";
-import { randomUUID as Et } from "node:crypto";
-import { DeleteCommand as Ft, UpdateCommand as Dt, TransactWriteCommand as Kt, QueryCommand as Ye, ScanCommand as ze, BatchGetCommand as Pt, GetCommand as Ot, PutCommand as Mt } from "@aws-sdk/lib-dynamodb";
-import { getAuthTables as $t } from "@better-auth/core/db";
-import { CreateTableCommand as Rt, waitUntilTableExists as _t, ListTablesCommand as Vt, DescribeTableCommand as jt, UpdateTableCommand as Xe } from "@aws-sdk/client-dynamodb";
-const qt = {
+import { createAdapterFactory as Oe } from "@better-auth/core/db/adapter";
+import { createHash as Ot, randomUUID as Pt } from "node:crypto";
+import { DeleteCommand as Mt, UpdateCommand as Rt, TransactWriteCommand as $t, QueryCommand as it, ScanCommand as at, BatchGetCommand as _t, GetCommand as Vt, PutCommand as Lt } from "@aws-sdk/lib-dynamodb";
+import { getAuthTables as qt } from "@better-auth/core/db";
+import { CreateTableCommand as jt, waitUntilTableExists as pt, ListTablesCommand as Bt, DescribeTableCommand as Ut, UpdateTableCommand as rt } from "@aws-sdk/client-dynamodb";
+const Gt = {
   account: [{ partitionKey: "providerId", sortKey: "accountId" }],
   session: [
     { partitionKey: "userId", sortKey: "createdAt" },
     { partitionKey: "token", sortKey: "createdAt" }
   ],
   verification: [{ partitionKey: "identifier", sortKey: "createdAt" }]
-}, Lt = {
+}, Wt = {
   /**
    * deviceCode table from deviceAuthorization plugin.
    *
@@ -25,75 +25,75 @@ const qt = {
       references: { model: "user", field: "id" }
     }
   }
-}, na = (e, t) => {
-  const n = $t(e);
-  return Ze(n, t);
-}, Ze = (e, t) => {
-  const n = [], i = pt(
-    t?.disableAutoCompositeIndexes ? {} : qt,
+}, la = (e, t) => {
+  const n = qt(e);
+  return st(n, t);
+}, st = (e, t) => {
+  const n = [], i = Ht(
+    t?.disableAutoCompositeIndexes ? {} : Gt,
     t?.compositeIndexes ?? {}
-  ), r = Bt(
-    t?.disableSchemaExtensions ? {} : Lt,
+  ), r = Qt(
+    t?.disableSchemaExtensions ? {} : Wt,
     t?.schemaExtensions ?? {}
   );
   for (const [a, s] of Object.entries(e)) {
-    const o = s.modelName ?? a, d = [], u = [
+    const o = s.modelName ?? a, d = [], l = [
       { AttributeName: "id", AttributeType: "S" }
-    ], m = [], c = /* @__PURE__ */ new Set(["id"]), f = /* @__PURE__ */ new Set(), l = (x) => {
-      c.has(x) || (u.push({
-        AttributeName: x,
+    ], m = [], c = /* @__PURE__ */ new Set(["id"]), f = /* @__PURE__ */ new Set(), u = (N) => {
+      c.has(N) || (l.push({
+        AttributeName: N,
         AttributeType: "S"
-      }), c.add(x));
-    }, y = Ie(
+      }), c.add(N));
+    }, y = Pe(
       i,
       a,
       o
-    ).flat(), g = /* @__PURE__ */ new Set();
-    for (const x of y) {
-      const v = x.partitionKey, w = x.sortKey, C = `${o}_${v}_${w}_idx`;
-      f.has(C) || (l(v), l(w), m.push({
+    ).flat(), v = /* @__PURE__ */ new Set();
+    for (const N of y) {
+      const A = N.partitionKey, w = N.sortKey, C = `${o}_${A}_${w}_idx`;
+      f.has(C) || (u(A), u(w), m.push({
         IndexName: C,
         KeySchema: [
-          { AttributeName: v, KeyType: "HASH" },
+          { AttributeName: A, KeyType: "HASH" },
           { AttributeName: w, KeyType: "RANGE" }
         ],
         Projection: { ProjectionType: "ALL" }
       }), d.push({
         indexName: C,
-        partitionKey: v,
+        partitionKey: A,
         sortKey: w
-      }), f.add(C), g.add(v));
+      }), f.add(C), v.add(A));
     }
-    const b = t?.indexReferences !== !1, S = Ie(
+    const g = t?.indexReferences !== !1, S = Pe(
       r,
       a,
       o
     ).reduce(
-      (x, v) => ({ ...x, ...v }),
+      (N, A) => ({ ...N, ...A }),
       {}
     );
-    for (const [x, v] of Object.entries(s.fields)) {
-      const w = v.fieldName ?? x, C = S[x], T = C?.index === !0 ? !0 : v.index === !0, F = C?.unique === !0 ? !0 : v.unique === !0, D = C?.references ?? v.references;
-      if ((T ? !0 : F) ? !0 : D !== void 0 ? b : !1) {
-        if (g.has(w))
+    for (const [N, A] of Object.entries(s.fields)) {
+      const w = A.fieldName ?? N, C = S[N], T = C?.index === !0 ? !0 : A.index === !0, F = C?.unique === !0 ? !0 : A.unique === !0, D = C?.references ?? A.references;
+      if ((T ? !0 : F) ? !0 : D !== void 0 ? g : !1) {
+        if (v.has(w))
           continue;
-        const A = `${o}_${w}_idx`;
-        if (f.has(A))
+        const M = `${o}_${w}_idx`;
+        if (f.has(M))
           continue;
-        l(w), m.push({
-          IndexName: A,
+        u(w), m.push({
+          IndexName: M,
           KeySchema: [{ AttributeName: w, KeyType: "HASH" }],
           Projection: { ProjectionType: "ALL" }
         }), d.push({
-          indexName: A,
+          indexName: M,
           partitionKey: w
-        }), f.add(A);
+        }), f.add(M);
       }
     }
     n.push({
       tableName: o,
       tableDefinition: {
-        attributeDefinitions: u,
+        attributeDefinitions: l,
         keySchema: [{ AttributeName: "id", KeyType: "HASH" }],
         billingMode: "PAY_PER_REQUEST",
         globalSecondaryIndexes: m.length > 0 ? m : void 0
@@ -102,12 +102,12 @@ const qt = {
     });
   }
   return n;
-}, Ie = (e, t, n) => Array.from(/* @__PURE__ */ new Set([t, n])).map((r) => e[r]).filter((r) => r !== void 0), pt = (e, t) => {
+}, Pe = (e, t, n) => Array.from(/* @__PURE__ */ new Set([t, n])).map((r) => e[r]).filter((r) => r !== void 0), Ht = (e, t) => {
   const n = { ...e };
   for (const [i, r] of Object.entries(t))
     n[i] ? n[i] = [...n[i], ...r] : n[i] = r;
   return n;
-}, Bt = (e, t) => {
+}, Qt = (e, t) => {
   const n = {};
   for (const [i, r] of Object.entries(e))
     n[i] = { ...r };
@@ -121,11 +121,11 @@ const qt = {
     else
       n[i] = { ...r };
   return n;
-}, Ut = (e, t) => t ? e.map((n) => ({
+}, Jt = (e, t) => t ? e.map((n) => ({
   ...n,
   tableName: `${t}${n.tableName}`
-})) : e, Gt = (e) => {
-  const t = Ze(e.tables, e.schemaOptions), n = e.file ?? "dynamodb-tables.ts", i = Ut(t, e.tableNamePrefix), r = JSON.stringify(i, null, 2);
+})) : e, Yt = (e) => {
+  const t = st(e.tables, e.schemaOptions), n = e.file ?? "dynamodb-tables.ts", i = Jt(t, e.tableNamePrefix), r = JSON.stringify(i, null, 2);
   return `/**
  * DynamoDB Table Schemas for Better Auth
  *
@@ -134,8 +134,8 @@ const qt = {
  *   npx ts-node ${n}
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { applyTableSchemas } from "better-auth-dynamodb";
-import type { TableSchema } from "better-auth-dynamodb";
+import { applyTableSchemas } from "@trkbt10/better-auth-dynamodb";
+import type { TableSchema } from "@trkbt10/better-auth-dynamodb";
 
 const tableSchemas: TableSchema[] = ${r};
 
@@ -149,8 +149,9 @@ class h extends Error {
   constructor(t, n) {
     super(n), this.code = t, this.name = "DynamoDBAdapterError";
   }
+  code;
 }
-const et = (e, t) => {
+const ot = (e, t) => {
   if (e === t)
     return 0;
   const n = Array.from(e), i = Array.from(t), r = Math.min(n.length, i.length);
@@ -160,64 +161,64 @@ const et = (e, t) => {
       return s;
   }
   return n.length - i.length;
-}, tt = (e) => e ? e.toLowerCase() : "eq", ke = (e) => typeof e == "number" && !Number.isNaN(e), K = (e) => typeof e == "string", Wt = (e, t) => e instanceof Date && t instanceof Date ? e.getTime() - t.getTime() : ke(e) && ke(t) ? e - t : K(e) && K(t) ? et(e, t) : null, nt = (e) => Array.isArray(e) ? e : [e], U = (e) => {
+}, lt = (e) => e ? e.toLowerCase() : "eq", Me = (e) => typeof e == "number" && !Number.isNaN(e), O = (e) => typeof e == "string", zt = (e, t) => e instanceof Date && t instanceof Date ? e.getTime() - t.getTime() : Me(e) && Me(t) ? e - t : O(e) && O(t) ? ot(e, t) : null, ut = (e) => Array.isArray(e) ? e : [e], Q = (e) => {
   const t = e.appendValue(e.value);
   return `${e.fieldToken} ${e.operator} ${t}`;
-}, G = (e) => {
-  const t = Wt(e.fieldValue, e.value);
+}, J = (e) => {
+  const t = zt(e.fieldValue, e.value);
   return t === null ? !1 : e.operator === "gt" ? t > 0 : e.operator === "gte" ? t >= 0 : e.operator === "lt" ? t < 0 : t <= 0;
-}, Ee = (e) => {
-  const t = nt(e.value), n = t.map(
+}, Re = (e) => {
+  const t = ut(e.value), n = t.map(
     (a) => e.appendValue(a)
   ), i = `${e.fieldToken} IN (${n.join(", ")})`, r = t.includes(null);
   return e.negate ? r ? `(attribute_exists(${e.fieldToken}) AND NOT (${i}))` : `NOT (${i})` : r ? `(attribute_not_exists(${e.fieldToken}) OR ${i})` : i;
-}, Fe = (e) => {
-  const n = nt(e.value).some(
-    (i) => it({ fieldValue: e.fieldValue, value: i })
+}, $e = (e) => {
+  const n = ut(e.value).some(
+    (i) => dt({ fieldValue: e.fieldValue, value: i })
   );
   return e.negate ? !n : n;
-}, Ht = (e) => {
+}, Xt = (e) => {
   const t = e.appendValue(e.value);
   return `contains(${e.fieldToken}, ${t})`;
-}, Qt = (e) => Array.isArray(e.fieldValue) || K(e.fieldValue) && K(e.value) ? e.fieldValue.includes(e.value) : !1, Jt = (e) => {
+}, Zt = (e) => Array.isArray(e.fieldValue) || O(e.fieldValue) && O(e.value) ? e.fieldValue.includes(e.value) : !1, en = (e) => {
   const t = e.appendValue(e.value);
   return `begins_with(${e.fieldToken}, ${t})`;
-}, Yt = (e) => K(e.fieldValue) && K(e.value) ? e.fieldValue.startsWith(e.value) : !1, zt = (e) => K(e.fieldValue) && K(e.value) ? e.fieldValue.endsWith(e.value) : !1, Q = (e) => e == null, Xt = (e) => {
+}, tn = (e) => O(e.fieldValue) && O(e.value) ? e.fieldValue.startsWith(e.value) : !1, nn = (e) => O(e.fieldValue) && O(e.value) ? e.fieldValue.endsWith(e.value) : !1, X = (e) => e == null, an = (e) => {
   const t = e.appendValue(e.value);
   return e.value === null ? `(attribute_not_exists(${e.fieldToken}) OR ${e.fieldToken} = ${t})` : `${e.fieldToken} = ${t}`;
-}, De = (e) => typeof e != "object" || e === null ? !1 : Object.getPrototypeOf(e) === Object.prototype, J = (e, t) => {
+}, _e = (e) => typeof e != "object" || e === null ? !1 : Object.getPrototypeOf(e) === Object.prototype, Z = (e, t) => {
   if (e === t)
     return !0;
   if (Array.isArray(e) && Array.isArray(t))
-    return e.length !== t.length ? !1 : e.every((n, i) => J(n, t[i]));
-  if (De(e) && De(t)) {
+    return e.length !== t.length ? !1 : e.every((n, i) => Z(n, t[i]));
+  if (_e(e) && _e(t)) {
     const n = Object.keys(e);
-    return n.length !== Object.keys(t).length ? !1 : n.every((i) => i in t ? J(e[i], t[i]) : !1);
+    return n.length !== Object.keys(t).length ? !1 : n.every((i) => i in t ? Z(e[i], t[i]) : !1);
   }
   return !1;
-}, it = (e) => e.value === null ? Q(e.fieldValue) : J(e.fieldValue, e.value), Zt = (e) => {
+}, dt = (e) => e.value === null ? X(e.fieldValue) : Z(e.fieldValue, e.value), rn = (e) => {
   const t = e.appendValue(e.value);
   return e.value === null ? `(attribute_exists(${e.fieldToken}) AND ${e.fieldToken} <> ${t})` : `${e.fieldToken} <> ${t}`;
-}, en = (e) => e.value === null ? !Q(e.fieldValue) : !J(e.fieldValue, e.value), tn = {
+}, sn = (e) => e.value === null ? !X(e.fieldValue) : !Z(e.fieldValue, e.value), on = {
   eq: {
     requiresClientFilter: !1,
-    buildFilterExpression: Xt,
-    evaluate: it
+    buildFilterExpression: an,
+    evaluate: dt
   },
   ne: {
     requiresClientFilter: !1,
-    buildFilterExpression: Zt,
-    evaluate: en
+    buildFilterExpression: rn,
+    evaluate: sn
   },
   gt: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => U({
+    buildFilterExpression: (e) => Q({
       fieldToken: e.fieldToken,
       value: e.value,
       operator: ">",
       appendValue: e.appendValue
     }),
-    evaluate: (e) => G({
+    evaluate: (e) => J({
       fieldValue: e.fieldValue,
       value: e.value,
       operator: "gt"
@@ -225,13 +226,13 @@ const et = (e, t) => {
   },
   gte: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => U({
+    buildFilterExpression: (e) => Q({
       fieldToken: e.fieldToken,
       value: e.value,
       operator: ">=",
       appendValue: e.appendValue
     }),
-    evaluate: (e) => G({
+    evaluate: (e) => J({
       fieldValue: e.fieldValue,
       value: e.value,
       operator: "gte"
@@ -239,13 +240,13 @@ const et = (e, t) => {
   },
   lt: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => U({
+    buildFilterExpression: (e) => Q({
       fieldToken: e.fieldToken,
       value: e.value,
       operator: "<",
       appendValue: e.appendValue
     }),
-    evaluate: (e) => G({
+    evaluate: (e) => J({
       fieldValue: e.fieldValue,
       value: e.value,
       operator: "lt"
@@ -253,13 +254,13 @@ const et = (e, t) => {
   },
   lte: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => U({
+    buildFilterExpression: (e) => Q({
       fieldToken: e.fieldToken,
       value: e.value,
       operator: "<=",
       appendValue: e.appendValue
     }),
-    evaluate: (e) => G({
+    evaluate: (e) => J({
       fieldValue: e.fieldValue,
       value: e.value,
       operator: "lte"
@@ -267,13 +268,13 @@ const et = (e, t) => {
   },
   in: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => Ee({
+    buildFilterExpression: (e) => Re({
       fieldToken: e.fieldToken,
       value: e.value,
       appendValue: e.appendValue,
       negate: !1
     }),
-    evaluate: (e) => Fe({
+    evaluate: (e) => $e({
       fieldValue: e.fieldValue,
       value: e.value,
       negate: !1
@@ -281,13 +282,13 @@ const et = (e, t) => {
   },
   not_in: {
     requiresClientFilter: !1,
-    buildFilterExpression: (e) => Ee({
+    buildFilterExpression: (e) => Re({
       fieldToken: e.fieldToken,
       value: e.value,
       appendValue: e.appendValue,
       negate: !0
     }),
-    evaluate: (e) => Fe({
+    evaluate: (e) => $e({
       fieldValue: e.fieldValue,
       value: e.value,
       negate: !0
@@ -295,43 +296,43 @@ const et = (e, t) => {
   },
   contains: {
     requiresClientFilter: !1,
-    buildFilterExpression: Ht,
-    evaluate: Qt
+    buildFilterExpression: Xt,
+    evaluate: Zt
   },
   starts_with: {
     requiresClientFilter: !1,
-    buildFilterExpression: Jt,
-    evaluate: Yt
+    buildFilterExpression: en,
+    evaluate: tn
   },
   ends_with: {
     requiresClientFilter: !0,
     buildFilterExpression: void 0,
-    evaluate: zt
+    evaluate: nn
   }
-}, ye = (e) => {
-  const t = tt(e), n = tn[t];
+}, he = (e) => {
+  const t = lt(e), n = on[t];
   if (!n)
     throw new h(
       "UNSUPPORTED_OPERATOR",
       `Unsupported operator: ${e}`
     );
   return n;
-}, nn = (e) => ye(e).requiresClientFilter, be = (e) => tt(e), j = (e) => e.mode !== "insensitive" ? !1 : Array.isArray(e.value) ? e.value.some(K) : K(e.value), Ne = (e) => nn(e.operator) ? !0 : j(e), xe = (e) => j(e) ? !1 : Array.isArray(e.value) ? e.value.every((t) => !Q(t)) : !Q(e.value), le = (e) => K(e) ? e.toLowerCase() : Array.isArray(e) ? e.map((t) => le(t)) : e, an = (e) => {
-  const t = ye(e.operator);
-  return j(e) ? t.evaluate({
-    fieldValue: le(e.fieldValue),
-    value: le(e.value)
+}, ln = (e) => he(e).requiresClientFilter, ve = (e) => lt(e), p = (e) => e.mode !== "insensitive" ? !1 : Array.isArray(e.value) ? e.value.some(O) : O(e.value), Ae = (e) => ln(e.operator) ? !0 : p(e), Se = (e) => p(e) ? !1 : Array.isArray(e.value) ? e.value.every((t) => !X(t)) : !X(e.value), be = (e) => O(e) ? e.toLowerCase() : Array.isArray(e) ? e.map((t) => be(t)) : e, un = (e) => {
+  const t = he(e.operator);
+  return p(e) ? t.evaluate({
+    fieldValue: be(e.fieldValue),
+    value: be(e.value)
   }) : t.evaluate({ fieldValue: e.fieldValue, value: e.value });
-}, rn = (e, t, n) => {
+}, dn = (e, t, n) => {
   const i = `:v${t.index}`;
   return t.index += 1, n[i] = e, i;
-}, sn = (e) => e && e.toUpperCase() === "OR" ? "OR" : "AND", on = (e) => {
+}, cn = (e) => e && e.toUpperCase() === "OR" ? "OR" : "AND", mn = (e) => {
   for (const t of e)
-    if (Ne(t))
+    if (Ae(t))
       return !0;
   return !1;
-}, ln = (e) => {
-  const t = ye(e.operator);
+}, fn = (e) => {
+  const t = he(e.operator);
   if (!t.buildFilterExpression)
     throw new h(
       "UNSUPPORTED_OPERATOR",
@@ -340,10 +341,10 @@ const et = (e, t) => {
   const n = {
     fieldToken: e.fieldToken,
     value: e.value,
-    appendValue: (i) => rn(i, e.state, e.values)
+    appendValue: (i) => dn(i, e.state, e.values)
   };
   return t.buildFilterExpression(n);
-}, un = (e) => {
+}, yn = (e) => {
   const { andExpressions: t, orExpressions: n } = e, i = t.join(" AND "), r = n.join(" OR ");
   if (i && r)
     return `(${i}) AND (${r})`;
@@ -360,7 +361,7 @@ const et = (e, t) => {
       expressionAttributeValues: {},
       requiresClientFilter: !1
     };
-  if (on(t))
+  if (mn(t))
     return {
       filterExpression: void 0,
       expressionAttributeNames: {},
@@ -368,9 +369,9 @@ const et = (e, t) => {
       requiresClientFilter: !0
     };
   const r = {}, a = {}, s = { index: 0 }, o = t.map((c, f) => {
-    const l = i({ model: n, field: c.field }), y = `#f${f}`;
-    r[y] = l;
-    const g = ln({
+    const u = i({ model: n, field: c.field }), y = `#f${f}`;
+    r[y] = u;
+    const v = fn({
       fieldToken: y,
       operator: c.operator,
       value: c.value,
@@ -378,20 +379,20 @@ const et = (e, t) => {
       values: a
     });
     return {
-      connector: sn(c.connector),
-      expression: g
+      connector: cn(c.connector),
+      expression: v
     };
-  }), d = o.filter((c) => c.connector === "AND").map((c) => c.expression), u = o.filter((c) => c.connector === "OR").map((c) => c.expression);
+  }), d = o.filter((c) => c.connector === "AND").map((c) => c.expression), l = o.filter((c) => c.connector === "OR").map((c) => c.expression);
   return {
-    filterExpression: un({
+    filterExpression: yn({
       andExpressions: d,
-      orExpressions: u
+      orExpressions: l
     }),
     expressionAttributeNames: r,
     expressionAttributeValues: a,
     requiresClientFilter: !1
   };
-}, at = (e) => e.every((t) => !Ne(t)), dn = (e) => Array.from(new Set(e)), cn = (e) => dn(e.fields).map((t, n) => {
+}, ct = (e) => e.every((t) => !Ae(t)), bn = (e) => Array.from(new Set(e)), Nn = (e) => bn(e.fields).map((t, n) => {
   const i = `#pin${n}`, r = e.snapshot[t];
   if (r === void 0)
     return {
@@ -405,19 +406,19 @@ const et = (e, t) => {
     expressionAttributeNames: { [i]: t },
     expressionAttributeValues: { [a]: r }
   };
-}), mn = (e) => {
+}), xn = (e) => {
   if (!e)
     throw new h(
       "UNSUPPORTED_OPERATOR",
       "Atomic conditions that pin fields require a snapshot of the target row."
     );
   return e;
-}, ue = (e) => {
+}, ee = (e) => {
   const t = {
     conditionExpression: "attribute_exists(#pk)",
     expressionAttributeNames: { "#pk": e.primaryKeyName },
     expressionAttributeValues: {}
-  }, n = at(e.where), i = () => {
+  }, n = ct(e.where), i = () => {
     if (!n)
       return [];
     const o = $({
@@ -435,13 +436,13 @@ const et = (e, t) => {
   }, r = () => {
     const o = e.pinnedFields ?? [];
     return n ? o : [...e.where.map(
-      (u) => e.getFieldName({ model: e.model, field: u.field })
+      (l) => e.getFieldName({ model: e.model, field: l.field })
     ), ...o];
   }, a = () => {
     const o = r();
-    return o.length === 0 ? [] : cn({
+    return o.length === 0 ? [] : Nn({
       fields: o,
-      snapshot: mn(e.snapshot)
+      snapshot: xn(e.snapshot)
     });
   }, s = [
     t,
@@ -459,7 +460,7 @@ const et = (e, t) => {
       {}
     )
   };
-}, E = (e) => {
+}, k = (e) => {
   const { model: t, getDefaultModelName: n, config: i } = e, r = n(t);
   if (i.tableNameResolver)
     return i.tableNameResolver(r);
@@ -471,23 +472,23 @@ const et = (e, t) => {
     "MISSING_TABLE_RESOLVER",
     "DynamoDB adapter requires tableNameResolver or tableNamePrefix."
   );
-}, ge = (e) => e instanceof Error ? e.name === "ConditionalCheckFailedException" : !1, de = async (e, t) => {
+}, we = (e) => e instanceof Error ? e.name === "ConditionalCheckFailedException" : !1, Ne = async (e, t) => {
   try {
-    return { applied: !0, attributes: (await e.send(new Ft(t))).Attributes };
+    return { applied: !0, attributes: (await e.send(new Mt(t))).Attributes };
   } catch (n) {
-    if (ge(n))
+    if (we(n))
       return { applied: !1 };
     throw n;
   }
-}, rt = async (e, t) => {
+}, mt = async (e, t) => {
   try {
-    return { applied: !0, attributes: (await e.send(new Dt(t))).Attributes };
+    return { applied: !0, attributes: (await e.send(new Rt(t))).Attributes };
   } catch (n) {
-    if (ge(n))
+    if (we(n))
       return { applied: !1 };
     throw n;
   }
-}, st = (e) => {
+}, ft = (e) => {
   const t = Object.entries(e).map(([a, s], o) => ({
     field: a,
     value: s,
@@ -515,25 +516,25 @@ const et = (e, t) => {
       n.map((a) => [a.valueToken, a.value])
     )
   };
-}, Ke = 100, fn = () => ({
+}, Ve = 100, gn = () => ({
   items: []
-}), z = (e, t) => e.items.find((n) => n.tableName !== t.tableName ? !1 : Object.is(n.key[t.keyField], t.keyValue)), he = (e, t) => e.items.filter((n) => n.tableName === t).length, yn = (e, t) => he(e, t) > 0, ot = (e, t) => {
+}), ie = (e, t) => e.items.find((n) => n.tableName !== t.tableName ? !1 : Object.is(n.key[t.keyField], t.keyValue)), Ce = (e, t) => e.items.filter((n) => n.tableName === t).length, hn = (e, t) => Ce(e, t) > 0, yt = (e, t) => {
   e.items.push(t);
-}, lt = (e) => {
+}, bt = (e) => {
   if (!(e.keyField in e.item))
     throw new h(
       "MISSING_PRIMARY_KEY",
       `Item is missing primary key field "${e.keyField}".`
     );
   return e.item[e.keyField];
-}, bn = (e, t) => {
-  const n = lt(t), i = z(e, {
+}, vn = (e, t) => {
+  const n = bt(t), i = ie(e, {
     tableName: t.tableName,
     keyField: t.keyField,
     keyValue: n
   });
   if (!i) {
-    ot(e, {
+    yt(e, {
       tableName: t.tableName,
       keyField: t.keyField,
       key: { [t.keyField]: n },
@@ -551,11 +552,11 @@ const et = (e, t) => {
       `A row with ${t.keyField} "${String(n)}" already exists in ${t.tableName}.`
     );
   i.current = t.item, i.replaced = i.base !== void 0;
-}, X = (e, t) => {
-  const n = t.assignedFields ?? [], i = lt({
+}, ae = (e, t) => {
+  const n = t.assignedFields ?? [], i = bt({
     item: t.row,
     keyField: t.keyField
-  }), r = z(e, {
+  }), r = ie(e, {
     tableName: t.tableName,
     keyField: t.keyField,
     keyValue: i
@@ -574,10 +575,10 @@ const et = (e, t) => {
     assignedFields: n,
     replaced: !1
   };
-  return ot(e, a), a;
-}, ut = (e, t) => {
+  return yt(e, a), a;
+}, Te = (e, t) => {
   e.pinnedFields = Array.from(/* @__PURE__ */ new Set([...e.pinnedFields, ...t]));
-}, dt = (e, t) => {
+}, Nt = (e, t) => {
   const n = e.items.filter(
     (a) => a.tableName === t.tableName
   );
@@ -589,7 +590,7 @@ const et = (e, t) => {
     )
   ), r = n.map((a) => a.current).filter((a) => a !== null).filter((a) => t.matches(a));
   return [...i, ...r];
-}, Pe = (e, t) => {
+}, Le = (e, t) => {
   const n = e.pinnedFields.map((r, a) => {
     const s = `#pin${a}`, o = t[r];
     if (o === void 0)
@@ -623,10 +624,10 @@ const et = (e, t) => {
       {}
     )
   };
-}, W = (e) => {
+}, Y = (e) => {
   const t = {};
   return Object.keys(e.names).length > 0 && (t.ExpressionAttributeNames = e.names), Object.keys(e.values).length > 0 && (t.ExpressionAttributeValues = e.values), t;
-}, Nn = (e) => {
+}, An = (e) => {
   if (e.base === void 0)
     return e.current === null ? void 0 : {
       Put: {
@@ -639,24 +640,24 @@ const et = (e, t) => {
   if (e.current === null) {
     if (e.pinnedFields.length === 0)
       return { Delete: { TableName: e.tableName, Key: e.key } };
-    const r = Pe(e, e.base);
+    const r = Le(e, e.base);
     return {
       Delete: {
         TableName: e.tableName,
         Key: e.key,
         ConditionExpression: r.expression,
-        ...W(r)
+        ...Y(r)
       }
     };
   }
-  const t = Pe(e, e.base), n = e.current;
+  const t = Le(e, e.base), n = e.current;
   if (e.replaced)
     return {
       Put: {
         TableName: e.tableName,
         Item: n,
         ConditionExpression: t.expression,
-        ...W(t)
+        ...Y(t)
       }
     };
   if (e.assignedFields.length === 0)
@@ -665,10 +666,10 @@ const et = (e, t) => {
         TableName: e.tableName,
         Key: e.key,
         ConditionExpression: t.expression,
-        ...W(t)
+        ...Y(t)
       }
     };
-  const i = st(
+  const i = ft(
     Object.fromEntries(
       e.assignedFields.map((r) => [r, n[r]])
     )
@@ -679,35 +680,35 @@ const et = (e, t) => {
       Key: e.key,
       UpdateExpression: i.updateExpression,
       ConditionExpression: t.expression,
-      ...W({
+      ...Y({
         names: { ...i.expressionAttributeNames, ...t.names },
         values: { ...i.expressionAttributeValues, ...t.values }
       })
     }
   };
-}, xn = async (e) => {
-  const { documentClient: t, state: n } = e, i = n.items.map((r) => Nn(r)).filter(
+}, Sn = async (e) => {
+  const { documentClient: t, state: n } = e, i = n.items.map((r) => An(r)).filter(
     (r) => r !== void 0
   );
   if (i.length !== 0) {
-    if (i.length > Ke)
+    if (i.length > Ve)
       throw new h(
         "TRANSACTION_LIMIT",
-        `DynamoDB transactions are limited to ${Ke} items; this one writes ${i.length}.`
+        `DynamoDB transactions are limited to ${Ve} items; this one writes ${i.length}.`
       );
     await t.send(
-      new Kt({
+      new $t({
         TransactItems: i
       })
     );
   }
-}, Z = (e) => e.map((t) => ({
+}, re = (e) => e.map((t) => ({
   field: t.field,
   operator: t.operator,
   value: t.value,
   connector: t.connector,
   mode: t.mode
-})), q = (e) => {
+})), B = (e) => {
   if (!e)
     throw new h(
       "MISSING_WHERE_INPUT",
@@ -718,34 +719,34 @@ const et = (e, t) => {
     return [];
   const n = (i) => i && i.toUpperCase() === "OR" ? "OR" : "AND";
   return t.map((i) => {
-    const r = be(
+    const r = ve(
       i.operator
-    ), a = n(i.connector), s = () => j(i) ? "insensitive" : "sensitive";
+    ), a = n(i.connector), s = () => p(i) ? "insensitive" : "sensitive";
     return {
       field: i.field,
       operator: r,
       value: i.value,
       connector: a,
       mode: s(),
-      requiresClientFilter: Ne(i)
+      requiresClientFilter: Ae(i)
     };
   });
-}, V = (e) => {
+}, j = (e) => {
   const { model: t, where: n, getFieldName: i, indexNameResolver: r, indexKeySchemaResolver: a } = e;
   if (!n || n.length === 0)
     return null;
-  const s = i({ model: t, field: "id" }), o = (N) => N && N.toUpperCase() === "OR" ? "OR" : "AND", u = n.map((N) => ({
-    entry: N,
-    operator: be(N.operator),
-    fieldName: i({ model: t, field: N.field }),
-    connector: o(N.connector)
+  const s = i({ model: t, field: "id" }), o = (x) => x && x.toUpperCase() === "OR" ? "OR" : "AND", l = n.map((x) => ({
+    entry: x,
+    operator: ve(x.operator),
+    fieldName: i({ model: t, field: x.field }),
+    connector: o(x.connector)
   })).filter(
-    ({ entry: N }) => xe(N)
-  ), m = u.find(
-    ({ operator: N, fieldName: I, connector: M }) => N === "eq" && M === "AND" && I === s
+    ({ entry: x }) => Se(x)
+  ), m = l.find(
+    ({ operator: x, fieldName: I, connector: P }) => x === "eq" && P === "AND" && I === s
   );
   if (m) {
-    const N = n.filter(
+    const x = n.filter(
       (I) => I !== m.entry
     );
     return {
@@ -754,68 +755,68 @@ const et = (e, t) => {
       expressionAttributeValues: {
         ":pk": m.entry.value
       },
-      remainingWhere: N,
+      remainingWhere: x,
       keyAttributes: [s]
     };
   }
-  const c = (N) => N ? u.some((I) => I.connector !== "AND" || I.operator !== "eq" ? !1 : I.fieldName === N) : !1, f = (N) => {
+  const c = (x) => x ? l.some((I) => I.connector !== "AND" || I.operator !== "eq" ? !1 : I.fieldName === x) : !1, f = (x) => {
     if (a)
-      return a({ model: t, indexName: N });
-  }, g = u.filter((N) => N.connector !== "AND" || N.operator !== "eq" ? !1 : !!r({ model: t, field: N.entry.field })).map((N) => {
-    const I = r({ model: t, field: N.entry.field });
+      return a({ model: t, indexName: x });
+  }, v = l.filter((x) => x.connector !== "AND" || x.operator !== "eq" ? !1 : !!r({ model: t, field: x.entry.field })).map((x) => {
+    const I = r({ model: t, field: x.entry.field });
     if (!I)
       return null;
-    const ie = f(I)?.sortKey, kt = c(ie);
+    const L = f(I)?.sortKey, b = c(L);
     return {
-      candidate: N,
+      candidate: x,
       indexName: I,
-      score: kt ? 2 : 1
+      score: b ? 2 : 1
     };
-  }).filter((N) => N !== null).reduce((I, M) => !I || M.score > I.score ? M : I, void 0);
-  if (!g)
+  }).filter((x) => x !== null).reduce((I, P) => !I || P.score > I.score ? P : I, void 0);
+  if (!v)
     return null;
-  const b = g.indexName, S = g.candidate, x = () => {
+  const g = v.indexName, S = v.candidate, N = () => {
     if (a)
-      return a({ model: t, indexName: b });
-  }, v = (N) => {
-    if (N)
-      return u.find(
-        ({ operator: I, fieldName: M, connector: ie }) => I === "eq" && ie === "AND" && M === N
+      return a({ model: t, indexName: g });
+  }, A = (x) => {
+    if (x)
+      return l.find(
+        ({ operator: I, fieldName: P, connector: L }) => I === "eq" && L === "AND" && P === x
       );
-  }, w = (N) => N ? "#pk = :pk AND #sk = :sk" : "#pk = :pk", C = (N) => N.sortKey ? {
-    "#pk": N.partitionKey,
-    "#sk": N.sortKey
-  } : { "#pk": N.partitionKey }, T = (N) => N.sortValue === void 0 ? { ":pk": N.partitionValue } : {
-    ":pk": N.partitionValue,
-    ":sk": N.sortValue
-  }, D = x()?.sortKey, P = v(D), L = (N) => {
-    if (N)
+  }, w = (x) => x ? "#pk = :pk AND #sk = :sk" : "#pk = :pk", C = (x) => x.sortKey ? {
+    "#pk": x.partitionKey,
+    "#sk": x.sortKey
+  } : { "#pk": x.partitionKey }, T = (x) => x.sortValue === void 0 ? { ":pk": x.partitionValue } : {
+    ":pk": x.partitionValue,
+    ":sk": x.sortValue
+  }, D = N()?.sortKey, K = A(D), U = (x) => {
+    if (x)
       return D;
-  }, p = (N) => {
-    if (N)
-      return N.entry.value;
-  }, B = n.filter(
-    (N) => N !== S.entry && N !== P?.entry
-  ), A = w(
-    !!P
-  ), k = C({
+  }, G = (x) => {
+    if (x)
+      return x.entry.value;
+  }, W = n.filter(
+    (x) => x !== S.entry && x !== K?.entry
+  ), M = w(
+    !!K
+  ), ue = C({
     partitionKey: S.fieldName,
-    sortKey: L(P)
-  }), O = T({
+    sortKey: U(K)
+  }), de = T({
     partitionValue: S.entry.value,
-    sortValue: p(P)
+    sortValue: G(K)
   });
   return {
-    keyConditionExpression: A,
-    expressionAttributeNames: k,
-    expressionAttributeValues: O,
-    indexName: b,
-    remainingWhere: B,
+    keyConditionExpression: M,
+    expressionAttributeNames: ue,
+    expressionAttributeValues: de,
+    indexName: g,
+    remainingWhere: W,
     keyAttributes: [S.fieldName, D].filter(
-      (N) => N !== void 0
+      (x) => x !== void 0
     )
   };
-}, Oe = (e) => {
+}, qe = (e) => {
   const t = (r) => e.keyAttributes.includes(
     e.getFieldName({ model: e.model, field: r.field })
   );
@@ -823,13 +824,13 @@ const et = (e, t) => {
     return e.where;
   const n = (r) => (r.connector ?? "AND").toUpperCase() === "OR", i = e.where.filter((r) => n(r)).some((r) => t(r));
   return e.where.filter((r) => n(r) ? !i : !t(r));
-}, gn = (e) => e.where.some(
+}, wn = (e) => e.where.some(
   (t) => e.keyAttributes.includes(
     e.getFieldName({ model: e.model, field: t.field })
   )
-), ct = (e) => e.getFieldName({ model: e.model, field: "id" }), Me = (e) => e.where.find(
+), xt = (e) => e.getFieldName({ model: e.model, field: "id" }), je = (e) => e.where.find(
   (t) => t.operator === e.operator && t.field === e.primaryKeyName
-), hn = (e) => {
+), Cn = (e) => {
   const t = (a) => a ? e.where.some(
     (s) => s.operator === "eq" && s.field === a
   ) : !1, n = (a) => {
@@ -842,16 +843,16 @@ const et = (e, t) => {
     });
     if (!s)
       return null;
-    const d = n(s)?.sortKey, u = t(d);
+    const d = n(s)?.sortKey, l = t(d);
     return {
       entry: a,
       indexName: s,
-      score: u ? 2 : 1
+      score: l ? 2 : 1
     };
   }).filter((a) => a !== null).reduce((a, s) => !a || s.score > a.score ? s : a, void 0);
   if (r)
     return { entry: r.entry, indexName: r.indexName };
-}, vn = (e) => {
+}, Tn = (e) => {
   for (const t of e.where) {
     if (t.operator !== "in" || !Array.isArray(t.value))
       continue;
@@ -862,23 +863,23 @@ const et = (e, t) => {
     if (n)
       return { entry: t, indexName: n };
   }
-}, An = (e) => {
+}, In = (e) => {
   if (!e)
     throw new h(
       "MISSING_STRATEGY_INPUT",
       "resolveBaseStrategy requires explicit props."
     );
-  const t = e.where.filter((o) => o.connector !== "AND" ? !1 : xe(o)), n = ct({
+  const t = e.where.filter((o) => o.connector !== "AND" ? !1 : Se(o)), n = xt({
     model: e.model,
     getFieldName: e.getFieldName
   });
-  if (Me({
+  if (je({
     where: t,
     primaryKeyName: n,
     operator: "eq"
   }))
     return { kind: "query", key: "pk" };
-  const r = hn({
+  const r = Cn({
     where: t,
     model: e.model,
     indexNameResolver: e.adapterConfig.indexNameResolver,
@@ -886,7 +887,7 @@ const et = (e, t) => {
   });
   if (r)
     return { kind: "query", key: "gsi", indexName: r.indexName };
-  const a = vn({
+  const a = Tn({
     where: t,
     model: e.model,
     indexNameResolver: e.adapterConfig.indexNameResolver
@@ -897,19 +898,19 @@ const et = (e, t) => {
       indexName: a.indexName,
       field: a.entry.field
     };
-  const s = Me({
+  const s = je({
     where: t,
     primaryKeyName: n,
     operator: "in"
   });
   return s && Array.isArray(s.value) ? { kind: "batch-get" } : { kind: "scan" };
-}, mt = (e) => {
+}, gt = (e) => {
   if (!e)
     throw new h(
       "MISSING_JOIN_STRATEGY_INPUT",
       "resolveJoinStrategyHint requires explicit props."
     );
-  const t = ct({
+  const t = xt({
     model: e.model,
     getFieldName: e.getFieldName
   });
@@ -920,27 +921,27 @@ const et = (e, t) => {
     field: e.joinField
   });
   return n ? { kind: "query", key: "gsi", indexName: n } : { kind: "scan" };
-}, Sn = (e) => {
+}, kn = (e) => {
   if (!e)
     throw new h(
       "MISSING_JOIN_STRATEGY_INPUT",
       "resolveJoinStrategy requires explicit props."
     );
-  const t = mt({
+  const t = gt({
     joinField: e.joinField,
     model: e.model,
     getFieldName: e.getFieldName,
     adapterConfig: e.adapterConfig
   });
   return t.kind === "query" && t.key === "pk" && e.baseValues.length > 1 ? { kind: "batch-get" } : t;
-}, wn = (e) => {
+}, En = (e) => {
   if (!e)
     throw new h(
       "MISSING_JOIN_PLAN_INPUT",
       "resolveJoinPlan requires explicit props."
     );
   return !e.join || Object.keys(e.join).length === 0 ? [] : Object.entries(e.join).map(([t, n]) => {
-    const i = mt({
+    const i = gt({
       joinField: n.on.to,
       model: t,
       getFieldName: e.getFieldName,
@@ -956,7 +957,7 @@ const et = (e, t) => {
       strategy: i
     };
   });
-}, Cn = (e) => {
+}, Fn = (e) => {
   const t = e.where.some(
     (i) => i.connector === "OR"
   ), n = e.where.some(
@@ -967,40 +968,40 @@ const et = (e, t) => {
     hasClientOnlyOperator: n,
     requiresSelectSupplement: e.requiresSelectSupplement
   };
-}, Tn = (e) => {
+}, Dn = (e) => {
   const t = e.strategy;
   return t.kind !== "multi-query" ? e.where : e.where.map((n) => n.field !== t.field || n.operator !== "in" || !Array.isArray(n.value) ? n : { ...n, operator: "eq", value: n.value[0] });
-}, In = (e) => {
+}, Kn = (e) => {
   if (e.strategy.kind !== "query" && e.strategy.kind !== "multi-query")
     return !1;
-  const t = V({
+  const t = j({
     model: e.model,
-    where: Tn({
-      where: Z(e.where),
+    where: Dn({
+      where: re(e.where),
       strategy: e.strategy
     }),
     getFieldName: e.getFieldName,
     indexNameResolver: e.adapterConfig.indexNameResolver,
     indexKeySchemaResolver: e.adapterConfig.indexKeySchemaResolver
   });
-  return t ? gn({
+  return t ? wn({
     model: e.model,
     where: t.remainingWhere,
     keyAttributes: t.keyAttributes,
     getFieldName: e.getFieldName
   }) : !1;
-}, kn = (e) => {
+}, On = (e) => {
   if (e.requiresClientFilter || e.requiresClientSort || e.limit === void 0)
     return;
   const t = e.offset ?? 0;
   return e.limit + t;
-}, En = (e) => {
+}, Pn = (e) => {
   if (e.sortBy)
     return {
       field: e.getFieldName({ model: e.model, field: e.sortBy.field }),
       direction: e.sortBy.direction
     };
-}, Fn = (e) => {
+}, Mn = (e) => {
   if (!e.normalizedSort || e.baseStrategy.kind !== "query" || e.baseStrategy.key !== "gsi" || !e.baseStrategy.indexName || !e.adapterConfig.indexKeySchemaResolver)
     return;
   const t = e.adapterConfig.indexKeySchemaResolver({
@@ -1009,7 +1010,7 @@ const et = (e, t) => {
   });
   if (!(!t || !t.sortKey) && t.sortKey === e.normalizedSort.field)
     return e.normalizedSort;
-}, Dn = (e) => !(!e.normalizedSort || e.serverSort), Kn = (e) => {
+}, Rn = (e) => !(!e.normalizedSort || e.serverSort), $n = (e) => {
   if (!e.select || e.select.length === 0)
     return { select: e.select, requiresSelectSupplement: !1 };
   if (e.joins.length === 0)
@@ -1030,49 +1031,49 @@ const et = (e, t) => {
     select: n.select,
     requiresSelectSupplement: n.requiresSelectSupplement
   };
-}, R = (e) => {
+}, _ = (e) => {
   if (!e)
     throw new h(
       "MISSING_QUERY_PLAN_INPUT",
       "buildQueryPlan requires explicit props."
     );
-  const t = q({ where: e.where }), n = wn({
+  const t = B({ where: e.where }), n = En({
     join: e.join,
     getFieldName: e.getFieldName,
     adapterConfig: e.adapterConfig
-  }), i = Kn({
+  }), i = $n({
     select: e.select,
     joins: n,
     getFieldName: e.getFieldName,
     model: e.model
-  }), r = Cn({
+  }), r = Fn({
     where: t,
     requiresSelectSupplement: i.requiresSelectSupplement
-  }), a = An({
+  }), a = In({
     model: e.model,
     where: t,
     getFieldName: e.getFieldName,
     adapterConfig: e.adapterConfig
   }), s = n.reduce(
-    (l, y) => (l[y.modelKey] = y.strategy, l),
+    (u, y) => (u[y.modelKey] = y.strategy, u),
     {}
-  ), d = r.hasClientOnlyOperator ? !0 : In({
+  ), d = r.hasClientOnlyOperator ? !0 : Kn({
     model: e.model,
     where: t,
     strategy: a,
     getFieldName: e.getFieldName,
     adapterConfig: e.adapterConfig
-  }), u = En({
+  }), l = Pn({
     sortBy: e.sortBy,
     getFieldName: e.getFieldName,
     model: e.model
-  }), m = Fn({
+  }), m = Mn({
     model: e.model,
     baseStrategy: a,
-    normalizedSort: u,
+    normalizedSort: l,
     adapterConfig: e.adapterConfig
-  }), c = Dn({
-    normalizedSort: u,
+  }), c = Rn({
+    normalizedSort: l,
     serverSort: m
   }), f = {
     baseStrategy: a,
@@ -1080,7 +1081,7 @@ const et = (e, t) => {
     requiresClientFilter: d,
     requiresClientSort: c,
     serverSort: m,
-    fetchLimit: kn({
+    fetchLimit: On({
       limit: e.limit,
       offset: e.offset,
       requiresClientFilter: d,
@@ -1092,7 +1093,7 @@ const et = (e, t) => {
       model: e.model,
       where: t,
       select: i.select,
-      sort: u,
+      sort: l,
       limit: e.limit,
       offset: e.offset
     },
@@ -1100,18 +1101,18 @@ const et = (e, t) => {
     execution: f,
     constraints: r
   };
-}, $e = (e) => an({
+}, pe = (e) => un({
   operator: e.condition.operator,
   mode: e.condition.mode,
   fieldValue: e.item[e.condition.fieldName],
   value: e.condition.value
-}), Pn = (e) => e.map((t) => ({
+}), _n = (e) => e.map((t) => ({
   fieldName: t.field,
-  operator: be(t.operator),
+  operator: ve(t.operator),
   value: t.value,
   connector: t.connector,
   mode: t.mode
-})), On = (e) => {
+})), Vn = (e) => {
   const { item: t, conditions: n } = e;
   if (n.length === 0)
     return !0;
@@ -1120,28 +1121,28 @@ const et = (e, t) => {
   ), r = n.filter(
     (c) => c.connector === "OR"
   ), a = i.map(
-    (c) => $e({ item: t, condition: c })
+    (c) => pe({ item: t, condition: c })
   ), s = r.map(
-    (c) => $e({ item: t, condition: c })
+    (c) => pe({ item: t, condition: c })
   ), o = (c) => c.length === 0 ? !0 : c.every(Boolean), d = (c) => c.length === 0 ? !0 : c.some(Boolean);
   return !(!o(a) || !d(s));
-}, ee = (e) => {
+}, se = (e) => {
   if (!e.where || e.where.length === 0)
     return e.items;
-  const t = Pn(e.where);
-  return e.items.filter((n) => On({ item: n, conditions: t }));
-}, Mn = (e) => e.requiresClientFilter ? ee({ items: e.items, where: e.where }) : e.items, $n = (e) => e === "desc" ? -1 : 1, Rn = (e, t) => {
+  const t = _n(e.where);
+  return e.items.filter((n) => Vn({ item: n, conditions: t }));
+}, Ln = (e) => e.requiresClientFilter ? se({ items: e.items, where: e.where }) : e.items, qn = (e) => e === "desc" ? -1 : 1, jn = (e, t) => {
   if (e.length <= 1)
     return e;
-  const n = $n(t.direction), i = (r) => r == null;
+  const n = qn(t.direction), i = (r) => r == null;
   return [...e].sort((r, a) => {
     const s = r[t.field], o = a[t.field];
-    return s === o ? 0 : i(s) ? 1 * n : i(o) ? -1 * n : typeof s == "string" && typeof o == "string" ? et(s, o) * n : s > o ? 1 * n : s < o ? -1 * n : 0;
+    return s === o ? 0 : i(s) ? 1 * n : i(o) ? -1 * n : typeof s == "string" && typeof o == "string" ? ot(s, o) * n : s > o ? 1 * n : s < o ? -1 * n : 0;
   });
-}, _n = (e, t) => t.sortBy ? Rn(e, {
+}, pn = (e, t) => t.sortBy ? jn(e, {
   field: t.sortBy.field,
   direction: t.sortBy.direction
-}) : e, Vn = (e) => {
+}) : e, Bn = (e) => {
   if (!e.select || e.select.length === 0)
     return e.items;
   const t = e.select.map(
@@ -1157,9 +1158,9 @@ const et = (e, t) => {
     );
     return { ...i, ...r };
   });
-}, te = (e, t) => {
+}, oe = (e, t) => {
   t.filterExpression && (e.FilterExpression = t.filterExpression), Object.keys(t.expressionAttributeNames).length > 0 && (e.ExpressionAttributeNames = t.expressionAttributeNames), Object.keys(t.expressionAttributeValues).length > 0 && (e.ExpressionAttributeValues = t.expressionAttributeValues);
-}, ne = async (e) => {
+}, le = async (e) => {
   const t = {
     token: e.initialToken,
     pageCount: 0
@@ -1170,37 +1171,37 @@ const et = (e, t) => {
     if (t.token = i, r || !t.token)
       break;
   }
-}, Y = (e, t) => {
+}, te = (e, t) => {
   if (e === void 0)
     return;
   const n = e - t;
   return n <= 0 ? 0 : n;
-}, ft = (e, t) => t === void 0 || e.length <= t ? e : e.slice(0, t), ce = async (e) => {
+}, ht = (e, t) => t === void 0 || e.length <= t ? e : e.slice(0, t), xe = async (e) => {
   const t = [], n = { pages: 0 };
-  if (await ne({
+  if (await le({
     fetchPage: async (i) => {
       n.pages += 1;
-      const r = Y(e.limit, t.length);
+      const r = te(e.limit, t.length);
       if (r === 0)
         return { shouldStop: !0 };
       const a = {
         TableName: e.tableName,
         KeyConditionExpression: e.keyConditionExpression
       };
-      e.indexName && (a.IndexName = e.indexName), te(a, {
+      e.indexName ? a.IndexName = e.indexName : e.consistentRead && (a.ConsistentRead = !0), oe(a, {
         filterExpression: e.filterExpression,
         expressionAttributeNames: e.expressionAttributeNames,
         expressionAttributeValues: e.expressionAttributeValues
       }), i && (a.ExclusiveStartKey = i), r !== void 0 && !e.filterExpression && (a.Limit = r), e.scanIndexForward !== void 0 && (a.ScanIndexForward = e.scanIndexForward);
       const s = await e.documentClient.send(
-        new Ye(a)
+        new it(a)
       ), o = s.Items ?? [];
       t.push(...o), e.operationStats?.recordQuery({
         tableName: e.tableName,
         items: o.length
       });
       const d = s.LastEvaluatedKey ?? void 0;
-      return Y(e.limit, t.length) === 0 ? { shouldStop: !0 } : { nextToken: d };
+      return te(e.limit, t.length) === 0 ? { shouldStop: !0 } : { nextToken: d };
     }
   }), e.explainDynamoOperations) {
     const i = e.limit === void 0 ? "∞" : String(e.limit), r = e.filterExpression ? "yes" : "no", a = e.indexName ?? "(primary)";
@@ -1208,10 +1209,10 @@ const et = (e, t) => {
       `DDB-OP QUERY table=${e.tableName} index=${a} pages=${n.pages} items=${t.length} limit=${i} filter=${r}`
     );
   }
-  return ft(t, e.limit);
-}, jn = async (e) => {
+  return ht(t, e.limit);
+}, Un = async (e) => {
   const t = { count: 0 }, n = { pages: 0 };
-  if (await ne({
+  if (await le({
     fetchPage: async (i) => {
       n.pages += 1;
       const r = {
@@ -1219,13 +1220,13 @@ const et = (e, t) => {
         KeyConditionExpression: e.keyConditionExpression,
         Select: "COUNT"
       };
-      e.indexName && (r.IndexName = e.indexName), te(r, {
+      e.indexName ? r.IndexName = e.indexName : e.consistentRead && (r.ConsistentRead = !0), oe(r, {
         filterExpression: e.filterExpression,
         expressionAttributeNames: e.expressionAttributeNames,
         expressionAttributeValues: e.expressionAttributeValues
       }), i && (r.ExclusiveStartKey = i);
       const a = await e.documentClient.send(
-        new Ye(r)
+        new it(r)
       ), s = a.Count ?? 0;
       return t.count += s, e.operationStats?.recordQuery({
         tableName: e.tableName,
@@ -1239,9 +1240,9 @@ const et = (e, t) => {
     );
   }
   return t.count;
-}, yt = async (e) => {
+}, vt = async (e) => {
   const t = [], n = { pages: 0 };
-  if (await ne({
+  if (await le({
     maxPages: e.maxPages ?? Number.POSITIVE_INFINITY,
     onMaxPages: () => {
       throw new h(
@@ -1251,26 +1252,26 @@ const et = (e, t) => {
     },
     fetchPage: async (i) => {
       n.pages += 1;
-      const r = Y(e.limit, t.length);
+      const r = te(e.limit, t.length);
       if (r === 0)
         return { shouldStop: !0 };
       const a = {
         TableName: e.tableName
       };
-      te(a, {
+      oe(a, {
         filterExpression: e.filterExpression,
         expressionAttributeNames: e.expressionAttributeNames,
         expressionAttributeValues: e.expressionAttributeValues
       }), i && (a.ExclusiveStartKey = i), r !== void 0 && !e.filterExpression && (a.Limit = r);
       const s = await e.documentClient.send(
-        new ze(a)
+        new at(a)
       ), o = s.Items ?? [];
       t.push(...o), e.operationStats?.recordScan({
         tableName: e.tableName,
         items: o.length
       });
       const d = s.LastEvaluatedKey ?? void 0;
-      return Y(e.limit, t.length) === 0 ? { shouldStop: !0 } : { nextToken: d };
+      return te(e.limit, t.length) === 0 ? { shouldStop: !0 } : { nextToken: d };
     }
   }), e.explainDynamoOperations) {
     const i = e.maxPages === void 0 ? "∞" : String(e.maxPages), r = e.limit === void 0 ? "∞" : String(e.limit), a = e.filterExpression ? "yes" : "no";
@@ -1278,10 +1279,10 @@ const et = (e, t) => {
       `DDB-OP SCAN table=${e.tableName} pages=${n.pages} items=${t.length} limit=${r} maxPages=${i} filter=${a}`
     );
   }
-  return ft(t, e.limit);
-}, qn = async (e) => {
+  return ht(t, e.limit);
+}, Gn = async (e) => {
   const t = { count: 0 }, n = { pages: 0 };
-  if (await ne({
+  if (await le({
     maxPages: e.maxPages ?? Number.POSITIVE_INFINITY,
     onMaxPages: () => {
       throw new h(
@@ -1295,13 +1296,13 @@ const et = (e, t) => {
         TableName: e.tableName,
         Select: "COUNT"
       };
-      te(r, {
+      oe(r, {
         filterExpression: e.filterExpression,
         expressionAttributeNames: e.expressionAttributeNames,
         expressionAttributeValues: e.expressionAttributeValues
       }), i && (r.ExclusiveStartKey = i);
       const a = await e.documentClient.send(
-        new ze(r)
+        new at(r)
       ), s = a.Count ?? 0;
       return t.count += s, e.operationStats?.recordScan({
         tableName: e.tableName,
@@ -1315,16 +1316,16 @@ const et = (e, t) => {
     );
   }
   return t.count;
-}, Ln = (e, t) => {
+}, Wn = (e, t) => {
   const n = Math.ceil(e.length / t);
   return Array.from(
     { length: n },
     (i, r) => e.slice(r * t, (r + 1) * t)
   );
-}, pn = (e, t) => t.map((n) => ({ [e]: n })), Bn = (e) => {
+}, Hn = (e, t) => t.map((n) => ({ [e]: n })), Qn = (e) => {
   const t = e.unprocessed?.[e.tableName]?.Keys;
   return t || [];
-}, ve = async (e) => {
+}, Ie = async (e) => {
   if (e.keys.length === 0)
     return [];
   const t = e.maxAttempts ?? 5;
@@ -1339,49 +1340,49 @@ const et = (e, t) => {
       "INVALID_BATCH_GET_BACKOFF",
       "BatchGet backoff delays must be >= 0."
     );
-  const r = [], a = Ln(e.keys, 100), s = { requests: 0, retries: 0 }, o = async (f) => {
-    f <= 0 || await new Promise((l) => {
-      setTimeout(() => l(), f);
+  const r = [], a = Wn(e.keys, 100), s = { requests: 0, retries: 0 }, o = async (f) => {
+    f <= 0 || await new Promise((u) => {
+      setTimeout(() => u(), f);
     });
   }, d = (f) => {
     if (f <= 0)
       return 0;
-    const l = n * Math.pow(2, f - 1);
-    return Math.min(i, l);
-  }, u = (f) => {
+    const u = n * Math.pow(2, f - 1);
+    return Math.min(i, u);
+  }, l = (f) => {
     if (typeof f != "object" || f === null)
       return;
-    const l = f;
-    if (typeof l.name == "string")
-      return l.name;
-    if (typeof l.code == "string")
-      return l.code;
+    const u = f;
+    if (typeof u.name == "string")
+      return u.name;
+    if (typeof u.code == "string")
+      return u.code;
   }, m = (f) => {
-    const l = u(f);
-    return l ? (/* @__PURE__ */ new Set([
+    const u = l(f);
+    return u ? (/* @__PURE__ */ new Set([
       "ProvisionedThroughputExceededException",
       "ThrottlingException",
       "RequestLimitExceeded",
       "TooManyRequestsException",
       "InternalServerError",
       "ServiceUnavailable"
-    ])).has(l) : !1;
-  }, c = async (f, l) => {
+    ])).has(u) : !1;
+  }, c = async (f, u) => {
     if (f.length === 0)
       return [];
-    if (l >= t)
+    if (u >= t)
       throw new h(
         "BATCH_GET_UNPROCESSED",
         "Failed to resolve unprocessed keys after retries."
       );
-    const y = async (v, w) => {
+    const y = async (A, w) => {
       s.requests += 1, w > 0 && (s.retries += 1);
       try {
         return await e.documentClient.send(
-          new Pt({
+          new _t({
             RequestItems: {
               [e.tableName]: {
-                Keys: v
+                Keys: A
               }
             }
           })
@@ -1389,7 +1390,7 @@ const et = (e, t) => {
       } catch (C) {
         if (e.operationStats?.recordBatchGet({
           tableName: e.tableName,
-          keys: v.length,
+          keys: A.length,
           items: 0,
           isRetry: w > 0
         }), !m(C))
@@ -1397,34 +1398,34 @@ const et = (e, t) => {
         const T = w + 1;
         if (T >= t)
           throw C;
-        return await o(d(T)), y(v, T);
+        return await o(d(T)), y(A, T);
       }
-    }, b = await y(f, l), S = b.Responses?.[e.tableName] ?? [];
+    }, g = await y(f, u), S = g.Responses?.[e.tableName] ?? [];
     e.operationStats?.recordBatchGet({
       tableName: e.tableName,
       keys: f.length,
       items: S.length,
-      isRetry: l > 0
+      isRetry: u > 0
     });
-    const x = Bn({
-      unprocessed: b.UnprocessedKeys,
+    const N = Qn({
+      unprocessed: g.UnprocessedKeys,
       tableName: e.tableName
     });
-    if (x.length > 0) {
-      const v = l + 1;
-      if (v >= t)
+    if (N.length > 0) {
+      const A = u + 1;
+      if (A >= t)
         throw new h(
           "BATCH_GET_UNPROCESSED",
           "Failed to resolve unprocessed keys after retries."
         );
-      await o(d(v));
-      const w = await c(x, v);
+      await o(d(A));
+      const w = await c(N, A);
       return [...S, ...w];
     }
     return S;
   };
   for (const f of a) {
-    const l = pn(e.keyField, f), y = await c(l, 0);
+    const u = Hn(e.keyField, f), y = await c(u, 0);
     r.push(...y);
   }
   if (e.explainDynamoOperations) {
@@ -1434,10 +1435,10 @@ const et = (e, t) => {
     );
   }
   return r;
-}, Un = (e) => e.relation === "one-to-one" ? 1 : e.limit !== void 0 ? e.limit : 100, Gn = (e) => {
+}, Jn = (e) => e.relation === "one-to-one" ? 1 : e.limit !== void 0 ? e.limit : 100, Yn = (e) => {
   if (!(e.baseValues.length > 1))
     return e.limit;
-}, Wn = (e) => {
+}, zn = (e) => {
   if (e.adapterConfig.scanPageLimitMode === "unbounded")
     return Number.POSITIVE_INFINITY;
   if (e.adapterConfig.scanMaxPages === void 0)
@@ -1446,10 +1447,10 @@ const et = (e, t) => {
       "Join scan requires scanMaxPages."
     );
   return e.adapterConfig.scanMaxPages;
-}, Hn = (e) => {
+}, Xn = (e) => {
   const t = e.items.map((n) => n[e.field]).filter((n) => n !== void 0);
   return Array.from(new Set(t));
-}, Qn = (e) => {
+}, Zn = (e) => {
   const t = /* @__PURE__ */ new Map();
   for (const n of e.items) {
     const i = n[e.field];
@@ -1459,19 +1460,19 @@ const et = (e, t) => {
     t.set(i, [...r, n]);
   }
   return t;
-}, Jn = (e) => e === "one-to-one" ? null : [], Yn = (e, t) => t === void 0 ? [] : e.get(t) ?? [], Re = (e) => [
+}, ei = (e) => e === "one-to-one" ? null : [], ti = (e, t) => t === void 0 ? [] : e.get(t) ?? [], Be = (e) => [
   {
     field: e.field,
     operator: e.operator,
     value: e.value,
     connector: "AND"
   }
-], zn = async (e) => {
-  const t = E({
+], ni = async (e) => {
+  const t = k({
     model: e.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
-  }), n = V({
+  }), n = j({
     model: e.model,
     where: e.where,
     getFieldName: e.getFieldName,
@@ -1488,7 +1489,7 @@ const et = (e, t) => {
     where: n.remainingWhere,
     getFieldName: e.getFieldName
   });
-  return await ce({
+  return await xe({
     documentClient: e.documentClient,
     tableName: t,
     indexName: n.indexName,
@@ -1506,8 +1507,8 @@ const et = (e, t) => {
     explainDynamoOperations: e.adapterConfig.explainDynamoOperations,
     operationStats: e.operationStats
   });
-}, Xn = async (e) => {
-  const t = E({
+}, ii = async (e) => {
+  const t = k({
     model: e.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
@@ -1516,7 +1517,7 @@ const et = (e, t) => {
     where: e.where,
     getFieldName: e.getFieldName
   });
-  return await yt({
+  return await vt({
     documentClient: e.documentClient,
     tableName: t,
     filterExpression: n.filterExpression,
@@ -1527,66 +1528,66 @@ const et = (e, t) => {
     explainDynamoOperations: e.adapterConfig.explainDynamoOperations,
     operationStats: e.operationStats
   });
-}, Zn = async (e) => {
+}, ai = async (e) => {
   if (!e)
     throw new h(
       "MISSING_JOIN_EXECUTION_INPUT",
       "executeJoin requires explicit props."
     );
-  const t = Hn({
+  const t = Xn({
     items: e.baseItems,
     field: e.join.on.from
   });
   if (t.length === 0)
-    return e.baseItems.map((b) => ({
-      ...b,
-      [e.join.modelKey]: Jn(e.join.relation)
+    return e.baseItems.map((g) => ({
+      ...g,
+      [e.join.modelKey]: ei(e.join.relation)
     }));
-  const n = Sn({
+  const n = kn({
     joinField: e.join.on.to,
     model: e.join.model,
     baseValues: t,
     getFieldName: e.getFieldName,
     adapterConfig: e.adapterConfig
-  }), i = Un({
+  }), i = Jn({
     relation: e.join.relation,
     limit: e.join.limit
-  }), r = E({
+  }), r = k({
     model: e.join.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
-  }), s = e.transactionState ? he(e.transactionState, r) : 0, d = (() => {
+  }), s = e.transactionState ? Ce(e.transactionState, r) : 0, d = (() => {
     if (s !== 0)
       return e.transactionState;
-  })(), m = i + s, l = ((b) => d ? dt(d, {
+  })(), m = i + s, u = ((g) => d ? Nt(d, {
     tableName: r,
     keyField: e.getFieldName({ model: e.join.model, field: "id" }),
-    items: b,
+    items: g,
     matches: (S) => t.includes(S[e.join.on.to])
-  }) : b)(await (async () => {
+  }) : g)(await (async () => {
     if (n.kind === "batch-get") {
-      const v = e.join.on.to;
-      return ve({
+      const A = e.join.on.to;
+      return Ie({
         documentClient: e.documentClient,
-        tableName: E({
+        tableName: k({
           model: e.join.model,
           getDefaultModelName: e.getDefaultModelName,
           config: e.adapterConfig
         }),
-        keyField: v,
+        keyField: A,
         keys: t,
         explainDynamoOperations: e.adapterConfig.explainDynamoOperations,
         operationStats: e.operationStats
       });
     }
     if (n.kind === "query") {
-      const v = Promise.resolve([]);
+      const A = Promise.resolve([]);
       return t.reduce(async (w, C) => {
-        const T = await w, F = Re({
+        const T = await w, F = Be({
           field: e.join.on.to,
           operator: "eq",
           value: C
-        }), D = await zn({
+        }), D = await ni({
           documentClient: e.documentClient,
           adapterConfig: e.adapterConfig,
           model: e.join.model,
@@ -1597,39 +1598,39 @@ const et = (e, t) => {
           operationStats: e.operationStats
         });
         return [...T, ...D];
-      }, v);
+      }, A);
     }
-    const b = Re({
+    const g = Be({
       field: e.join.on.to,
       operator: "in",
       value: t
-    }), S = Wn({ adapterConfig: e.adapterConfig }), x = Gn({ limit: m, baseValues: t });
-    return Xn({
+    }), S = zn({ adapterConfig: e.adapterConfig }), N = Yn({ limit: m, baseValues: t });
+    return ii({
       documentClient: e.documentClient,
       adapterConfig: e.adapterConfig,
       model: e.join.model,
-      where: b,
-      limit: x,
+      where: g,
+      limit: N,
       maxPages: S,
       getFieldName: e.getFieldName,
       getDefaultModelName: e.getDefaultModelName,
       operationStats: e.operationStats
     });
-  })()), y = Qn({
-    items: l,
+  })()), y = Zn({
+    items: u,
     field: e.join.on.to
-  }), g = (b) => e.join.relation === "one-to-one" ? b[0] ?? null : b.slice(0, i);
-  return e.baseItems.map((b) => {
-    const S = b[e.join.on.from], x = Yn(y, S), v = g(x);
+  }), v = (g) => e.join.relation === "one-to-one" ? g[0] ?? null : g.slice(0, i);
+  return e.baseItems.map((g) => {
+    const S = g[e.join.on.from], N = ti(y, S), A = v(N);
     return {
-      ...b,
-      [e.join.modelKey]: v
+      ...g,
+      [e.join.modelKey]: A
     };
   });
-}, ei = (e) => e.strategy.kind === "batch-get" ? !0 : e.requiresClientFilter, ti = (e) => {
+}, ri = (e) => e.strategy.kind === "batch-get" ? !0 : e.requiresClientFilter, si = (e) => {
   if (e.serverSort)
     return e.serverSort.direction === "asc";
-}, ni = (e) => e.strategy.kind !== "query" ? e.keyConditionIndex : e.strategy.key === "gsi" ? e.strategy.indexName : e.keyConditionIndex, ii = (e) => e.serverSort ? e.items : _n(e.items, { sortBy: e.sort }), ai = (e) => {
+}, oi = (e) => e.strategy.kind !== "query" ? e.keyConditionIndex : e.strategy.key === "gsi" ? e.strategy.indexName : e.keyConditionIndex, li = (e) => e.serverSort ? e.items : pn(e.items, { sortBy: e.sort }), ui = (e) => {
   if (e.adapterConfig.scanPageLimitMode === "unbounded")
     return Number.POSITIVE_INFINITY;
   if (e.adapterConfig.scanMaxPages === void 0)
@@ -1638,13 +1639,13 @@ const et = (e, t) => {
       "Scan execution requires scanMaxPages."
     );
   return e.adapterConfig.scanMaxPages;
-}, bt = (e) => Array.from(new Set(e)), ri = (e) => {
+}, At = (e) => Array.from(new Set(e)), di = (e) => {
   const t = e.where.find(
     (n) => n.field === e.primaryKeyName && n.operator === "in"
   );
-  return t ? Array.isArray(t.value) ? bt(t.value) : [] : [];
-}, si = async (e) => {
-  const t = Z(e.plan.base.where), n = E({
+  return t ? Array.isArray(t.value) ? At(t.value) : [] : [];
+}, ci = async (e) => {
+  const t = re(e.plan.base.where), n = k({
     model: e.plan.base.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
@@ -1653,11 +1654,11 @@ const et = (e, t) => {
     const s = e.getFieldName({
       model: e.plan.base.model,
       field: "id"
-    }), o = ri({
+    }), o = di({
       where: e.plan.base.where,
       primaryKeyName: s
     });
-    return o.length === 0 ? [] : ve({
+    return o.length === 0 ? [] : Ie({
       documentClient: e.documentClient,
       tableName: n,
       keyField: s,
@@ -1674,44 +1675,44 @@ const et = (e, t) => {
       return [];
     if (!Array.isArray(s.value))
       return [];
-    const o = bt(s.value), d = e.plan.execution.fetchLimit, u = e.plan.base.model;
+    const o = At(s.value), d = e.plan.execution.fetchLimit, l = e.plan.base.model;
     return (await Promise.all(
       o.map(async (c) => {
-        const f = t.map((g) => g.field === i.field && g.operator === "in" ? {
-          ...g,
+        const f = t.map((v) => v.field === i.field && v.operator === "in" ? {
+          ...v,
           operator: "eq",
           value: c
-        } : g), l = V({
-          model: u,
+        } : v), u = j({
+          model: l,
           where: f,
           getFieldName: e.getFieldName,
           indexNameResolver: e.adapterConfig.indexNameResolver,
           indexKeySchemaResolver: e.adapterConfig.indexKeySchemaResolver
         });
-        if (!l)
+        if (!u)
           return [];
         const y = $({
-          model: u,
-          where: Oe({
-            model: u,
-            where: l.remainingWhere,
-            keyAttributes: l.keyAttributes,
+          model: l,
+          where: qe({
+            model: l,
+            where: u.remainingWhere,
+            keyAttributes: u.keyAttributes,
             getFieldName: e.getFieldName
           }),
           getFieldName: e.getFieldName
         });
-        return await ce({
+        return await xe({
           documentClient: e.documentClient,
           tableName: n,
-          indexName: l.indexName ?? i.indexName,
-          keyConditionExpression: l.keyConditionExpression,
+          indexName: u.indexName ?? i.indexName,
+          keyConditionExpression: u.keyConditionExpression,
           filterExpression: y.filterExpression,
           expressionAttributeNames: {
-            ...l.expressionAttributeNames,
+            ...u.expressionAttributeNames,
             ...y.expressionAttributeNames
           },
           expressionAttributeValues: {
-            ...l.expressionAttributeValues,
+            ...u.expressionAttributeValues,
             ...y.expressionAttributeValues
           },
           limit: d,
@@ -1722,7 +1723,7 @@ const et = (e, t) => {
     )).flat();
   }
   if (i.kind === "query") {
-    const s = V({
+    const s = j({
       model: e.plan.base.model,
       where: t,
       getFieldName: e.getFieldName,
@@ -1736,23 +1737,24 @@ const et = (e, t) => {
       );
     const o = $({
       model: e.plan.base.model,
-      where: Oe({
+      where: qe({
         model: e.plan.base.model,
         where: s.remainingWhere,
         keyAttributes: s.keyAttributes,
         getFieldName: e.getFieldName
       }),
       getFieldName: e.getFieldName
-    }), d = ni({
+    }), d = oi({
       strategy: i,
       keyConditionIndex: s.indexName
-    }), u = ti({
+    }), l = si({
       serverSort: e.plan.execution.serverSort
     });
-    return await ce({
+    return await xe({
       documentClient: e.documentClient,
       tableName: n,
       indexName: d,
+      consistentRead: e.adapterConfig.requiresConsistentRead?.(e.plan.base.model),
       keyConditionExpression: s.keyConditionExpression,
       filterExpression: o.filterExpression,
       expressionAttributeNames: {
@@ -1764,7 +1766,7 @@ const et = (e, t) => {
         ...o.expressionAttributeValues
       },
       limit: e.plan.execution.fetchLimit,
-      scanIndexForward: u,
+      scanIndexForward: l,
       explainDynamoOperations: e.adapterConfig.explainDynamoOperations,
       operationStats: e.operationStats
     });
@@ -1773,8 +1775,8 @@ const et = (e, t) => {
     model: e.plan.base.model,
     where: t,
     getFieldName: e.getFieldName
-  }), a = ai({ adapterConfig: e.adapterConfig });
-  return await yt({
+  }), a = ui({ adapterConfig: e.adapterConfig });
+  return await vt({
     documentClient: e.documentClient,
     tableName: n,
     filterExpression: r.filterExpression,
@@ -1785,78 +1787,78 @@ const et = (e, t) => {
     explainDynamoOperations: e.adapterConfig.explainDynamoOperations,
     operationStats: e.operationStats
   });
-}, oi = (e) => {
+}, mi = (e) => {
   const t = e.offset ?? 0;
   return e.limit === void 0 ? e.items.slice(t) : e.items.slice(t, t + e.limit);
-}, li = (e) => {
+}, fi = (e) => {
   if (!e.transactionState)
     return;
-  const t = E({
+  const t = k({
     model: e.plan.base.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
-  }), n = he(e.transactionState, t);
+  }), n = Ce(e.transactionState, t);
   if (n !== 0)
     return { tableName: t, bufferedRows: n };
-}, ui = (e, t) => e.execution.fetchLimit === void 0 ? e : {
+}, yi = (e, t) => e.execution.fetchLimit === void 0 ? e : {
   ...e,
   execution: {
     ...e.execution,
     fetchLimit: e.execution.fetchLimit + t
   }
-}, _ = (e) => {
+}, V = (e) => {
   if (!e)
     throw new h(
       "MISSING_EXECUTOR_INPUT",
       "createQueryPlanExecutor requires explicit props."
     );
-  const t = (n, i, r) => !e.transactionState || i === void 0 ? r : dt(e.transactionState, {
+  const t = (n, i, r) => !e.transactionState || i === void 0 ? r : Nt(e.transactionState, {
     tableName: i.tableName,
     keyField: e.getFieldName({ model: n.base.model, field: "id" }),
     items: r,
-    matches: (a) => ee({ items: [a], where: n.base.where }).length === 1
+    matches: (a) => se({ items: [a], where: n.base.where }).length === 1
   });
   return async (n, i) => {
-    const r = li({
+    const r = fi({
       plan: n,
       transactionState: e.transactionState,
       adapterConfig: e.adapterConfig,
       getDefaultModelName: e.getDefaultModelName
-    }), s = r === void 0 ? n : ui(n, r.bufferedRows), o = await si({
+    }), s = r === void 0 ? n : yi(n, r.bufferedRows), o = await ci({
       plan: s,
       documentClient: e.documentClient,
       adapterConfig: e.adapterConfig,
       getFieldName: e.getFieldName,
       getDefaultModelName: e.getDefaultModelName,
       operationStats: i?.operationStats
-    }), d = ei({
+    }), d = ri({
       strategy: s.execution.baseStrategy,
       requiresClientFilter: s.execution.requiresClientFilter
-    }), u = t(
+    }), l = t(
       s,
       r,
-      Mn({
+      Ln({
         items: o,
         where: s.base.where,
         requiresClientFilter: d
       })
-    ), c = ii({
-      items: u,
+    ), c = li({
+      items: l,
       serverSort: (() => {
         if (r === void 0)
           return s.execution.serverSort;
       })(),
       sort: s.base.sort
-    }), f = oi({
+    }), f = mi({
       items: c,
       offset: s.base.offset,
       limit: s.base.limit
     }), y = await s.joins.reduce(
-      async (S, x) => {
-        const v = await S;
-        return Zn({
-          baseItems: v,
-          join: x,
+      async (S, N) => {
+        const A = await S;
+        return ai({
+          baseItems: A,
+          join: N,
           documentClient: e.documentClient,
           adapterConfig: e.adapterConfig,
           getFieldName: e.getFieldName,
@@ -1866,16 +1868,16 @@ const et = (e, t) => {
         });
       },
       Promise.resolve(f)
-    ), g = s.joins.map((S) => S.modelKey);
-    return Vn({
+    ), v = s.joins.map((S) => S.modelKey);
+    return Bn({
       items: y,
       model: s.base.model,
       select: s.base.select,
-      joinKeys: g,
+      joinKeys: v,
       getFieldName: e.getFieldName
     });
   };
-}, Ae = (e) => {
+}, ke = (e) => {
   const { item: t, keyField: n } = e;
   if (!(n in t))
     throw new h(
@@ -1883,13 +1885,13 @@ const et = (e, t) => {
       `Item is missing primary key field "${n}".`
     );
   return { [n]: t[n] };
-}, Nt = 5, xt = (e) => Z(q({ where: e })), gt = (e) => {
-  const t = q({ where: e.where }).find((n) => n.connector !== "AND" || n.operator !== "eq" || j(n) ? !1 : e.getFieldName({ model: e.model, field: n.field }) === e.primaryKeyName);
+}, St = 5, Ee = (e) => re(B({ where: e })), wt = (e) => {
+  const t = B({ where: e.where }).find((n) => n.connector !== "AND" || n.operator !== "eq" || p(n) ? !1 : e.getFieldName({ model: e.model, field: n.field }) === e.primaryKeyName);
   return t ? {
     pinned: !0,
     value: t.value
   } : { pinned: !1 };
-}, me = (e, t) => {
+}, ne = (e, t) => {
   const n = {
     ...e.expressionAttributeValues,
     ...t?.expressionAttributeValues
@@ -1904,93 +1906,93 @@ const et = (e, t) => {
     }
   };
   return Object.keys(n).length === 0 ? i : { ...i, ExpressionAttributeValues: n };
-}, ht = (e) => `${typeof e}:${String(e)}`, di = (e) => new h(
+}, Ct = (e) => `${typeof e}:${String(e)}`, bi = (e) => new h(
   "ATOMIC_WRITE_CONTENTION",
-  `${e} could not settle after ${Nt} attempts: the target row kept changing between the read and the conditional write.`
-), vt = (e, t) => {
-  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = _({
+  `${e} could not settle after ${St} attempts: the target row kept changing between the read and the conditional write.`
+), Tt = (e, t) => {
+  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = V({
     documentClient: n,
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  }), d = async (l) => {
+  }), d = async (u) => {
     if (s) {
-      const g = z(s, {
-        tableName: l.tableName,
-        keyField: l.primaryKeyName,
-        keyValue: l.value
+      const v = ie(s, {
+        tableName: u.tableName,
+        keyField: u.primaryKeyName,
+        keyValue: u.value
       });
-      if (g)
-        return g.current;
+      if (v)
+        return v.current;
     }
     return (await n.send(
-      new Ot({
-        TableName: l.tableName,
-        Key: { [l.primaryKeyName]: l.value },
+      new Vt({
+        TableName: u.tableName,
+        Key: { [u.primaryKeyName]: u.value },
         ConsistentRead: !0
       })
     )).Item ?? null;
-  }, u = async (l) => {
-    if (l.keyValue === void 0 || l.keyValue === null)
+  }, l = async (u) => {
+    if (u.keyValue === void 0 || u.keyValue === null)
       return null;
-    const y = r({ model: l.model, field: "id" }), g = await d({
-      tableName: E({
-        model: l.model,
+    const y = r({ model: u.model, field: "id" }), v = await d({
+      tableName: k({
+        model: u.model,
         getDefaultModelName: a,
         config: i
       }),
       primaryKeyName: y,
-      value: l.keyValue
+      value: u.keyValue
     });
-    if (!g)
+    if (!v)
       return null;
-    const b = ee({
-      items: [g],
-      where: q({ where: l.where })
+    const g = se({
+      items: [v],
+      where: B({ where: u.where })
     });
-    return b.length === 0 ? null : { key: { [y]: l.keyValue }, snapshot: b[0] };
-  }, m = async (l) => {
-    const y = r({ model: l.model, field: "id" }), g = R({
-      model: l.model,
-      where: l.where,
+    return g.length === 0 ? null : { key: { [y]: u.keyValue }, snapshot: g[0] };
+  }, m = async (u) => {
+    const y = r({ model: u.model, field: "id" }), v = _({
+      model: u.model,
+      where: u.where,
       select: void 0,
       sortBy: void 0,
-      limit: l.excludedKeyValues.length + 1,
+      limit: u.excludedKeyValues.length + 1,
       offset: void 0,
       join: void 0,
       getFieldName: r,
       adapterConfig: i
-    }), S = (await o(g)).find(
-      (x) => !l.excludedKeyValues.includes(ht(x[y]))
+    }), S = (await o(v)).find(
+      (N) => !u.excludedKeyValues.includes(Ct(N[y]))
     );
     return S ? {
-      key: Ae({ item: S, keyField: y }),
+      key: ke({ item: S, keyField: y }),
       snapshot: S
     } : null;
-  }, c = (l) => gt({
-    model: l.model,
-    where: l.where,
-    primaryKeyName: r({ model: l.model, field: "id" }),
+  }, c = (u) => wt({
+    model: u.model,
+    where: u.where,
+    primaryKeyName: r({ model: u.model, field: "id" }),
     getFieldName: r
   });
-  return { readMatchingRow: u, findCandidate: m, resolvePinned: c, resolveTarget: async (l) => {
-    const y = c(l);
-    return y.pinned ? u({ ...l, keyValue: y.value }) : m({ ...l, excludedKeyValues: [] });
+  return { readMatchingRow: l, findCandidate: m, resolvePinned: c, resolveTarget: async (u) => {
+    const y = c(u);
+    return y.pinned ? l({ ...u, keyValue: y.value }) : m({ ...u, excludedKeyValues: [] });
   } };
-}, ci = (e) => e instanceof h ? e.code === "INVALID_UPDATE" : !1, mi = async (e, t) => {
+}, Ni = (e) => e instanceof h ? e.code === "INVALID_UPDATE" : !1, xi = async (e, t) => {
   try {
     const n = await e(t);
     return n.applied && n.attributes ? { outcome: "written", row: n.attributes } : { outcome: "failed" };
   } catch (n) {
-    if (ci(n))
+    if (Ni(n))
       return { outcome: "rejected", error: n };
     throw n;
   }
-}, _e = async (e) => {
+}, Ue = async (e) => {
   const t = { target: e.target, verified: e.verified };
-  for (let n = 0; n < Nt; n += 1) {
-    const i = await mi(e.write, t.target);
+  for (let n = 0; n < St; n += 1) {
+    const i = await xi(e.write, t.target);
     if (i.outcome === "written")
       return i.row;
     if (i.outcome === "rejected" && t.verified)
@@ -2000,12 +2002,12 @@ const et = (e, t) => {
       return null;
     t.target = r, t.verified = !0;
   }
-  throw di(e.method);
-}, At = async (e) => {
+  throw bi(e.method);
+}, It = async (e) => {
   const { reader: t, model: n, where: i } = e, r = t.resolvePinned({ model: n, where: i });
   if (r.pinned) {
     const s = () => t.readMatchingRow({ model: n, where: i, keyValue: r.value }), o = await s();
-    return o ? _e({
+    return o ? Ue({
       method: e.method,
       target: o,
       verified: !0,
@@ -2022,7 +2024,7 @@ const et = (e, t) => {
     });
     if (!s)
       return null;
-    const o = Object.values(s.key)[0], d = await _e({
+    const o = Object.values(s.key)[0], d = await Ue({
       method: e.method,
       target: s,
       verified: !1,
@@ -2031,147 +2033,147 @@ const et = (e, t) => {
     });
     if (d)
       return d;
-    a.push(ht(o));
+    a.push(Ct(o));
   }
-}, fi = (e, t) => {
-  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = vt(e, t), d = (u) => {
-    const m = X(u.state, {
-      tableName: u.tableName,
-      keyField: u.primaryKeyName,
-      row: u.target.snapshot,
+}, gi = (e, t) => {
+  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = Tt(e, t), d = (l) => {
+    const m = ae(l.state, {
+      tableName: l.tableName,
+      keyField: l.primaryKeyName,
+      row: l.target.snapshot,
       next: null
     });
-    return ut(m, Object.keys(m.base ?? {})), u.target.snapshot;
+    return Te(m, Object.keys(m.base ?? {})), l.target.snapshot;
   };
   return async ({
-    model: u,
+    model: l,
     where: m
   }) => {
-    const c = E({
-      model: u,
+    const c = k({
+      model: l,
       getDefaultModelName: a,
       config: i
-    }), f = r({ model: u, field: "id" }), l = xt(m);
+    }), f = r({ model: l, field: "id" }), u = Ee(m);
     if (s) {
-      const b = await o.resolveTarget({ model: u, where: m });
-      return b ? d({
+      const g = await o.resolveTarget({ model: l, where: m });
+      return g ? d({
         state: s,
         tableName: c,
         primaryKeyName: f,
-        target: b
+        target: g
       }) : null;
     }
-    const y = o.resolvePinned({ model: u, where: m });
-    if (y.pinned && at(l)) {
+    const y = o.resolvePinned({ model: l, where: m });
+    if (y.pinned && ct(u)) {
       if (y.value === void 0 || y.value === null)
         return null;
-      const b = await de(n, {
+      const g = await Ne(n, {
         TableName: c,
         Key: { [f]: y.value },
-        ...me(
-          ue({
-            model: u,
-            where: l,
+        ...ne(
+          ee({
+            model: l,
+            where: u,
             primaryKeyName: f,
             getFieldName: r
           })
         ),
         ReturnValues: "ALL_OLD"
       });
-      return b.applied ? b.attributes ?? null : null;
+      return g.applied ? g.attributes ?? null : null;
     }
-    return await At({
+    return await It({
       method: "consumeOne",
       reader: o,
-      model: u,
+      model: l,
       where: m,
-      write: (b) => de(n, {
+      write: (g) => Ne(n, {
         TableName: c,
-        Key: b.key,
-        ...me(
-          ue({
-            model: u,
-            where: l,
+        Key: g.key,
+        ...ne(
+          ee({
+            model: l,
+            where: u,
             primaryKeyName: f,
             getFieldName: r,
-            snapshot: b.snapshot
+            snapshot: g.snapshot
           })
         ),
         ReturnValues: "ALL_OLD"
       })
     });
   };
-}, yi = () => ">=1", bi = (e) => e === void 0 ? "unknown" : Number.isFinite(e) ? `<=${e}` : "unbounded", Ni = (e) => typeof e == "string" || typeof e == "number" || typeof e == "boolean" || e === null ? JSON.stringify(e) : Array.isArray(e) ? `[${e.map((t) => JSON.stringify(t)).join(", ")}]` : "…", xi = (e) => `${e.connector} ${e.field} ${e.operator} ${Ni(e.value)}`, ae = (e) => e === void 0 ? "∞" : String(e), Ve = (e) => e.kind === "query" ? e.key === "pk" ? "query(pk)" : `query(gsi:${e.indexName ?? "?"})` : e.kind === "multi-query" ? `multi-query(gsi:${e.indexName})` : e.kind === "batch-get" ? "batch-get(pk)" : "scan", H = (e, t) => {
+}, hi = () => ">=1", vi = (e) => e === void 0 ? "unknown" : Number.isFinite(e) ? `<=${e}` : "unbounded", Ai = (e) => typeof e == "string" || typeof e == "number" || typeof e == "boolean" || e === null ? JSON.stringify(e) : Array.isArray(e) ? `[${e.map((t) => JSON.stringify(t)).join(", ")}]` : "…", Si = (e) => `${e.connector} ${e.field} ${e.operator} ${Ai(e.value)}`, ce = (e) => e === void 0 ? "∞" : String(e), Ge = (e) => e.kind === "query" ? e.key === "pk" ? "query(pk)" : `query(gsi:${e.indexName ?? "?"})` : e.kind === "multi-query" ? `multi-query(gsi:${e.indexName})` : e.kind === "batch-get" ? "batch-get(pk)" : "scan", z = (e, t) => {
   const n = "  ".repeat(t);
   return e.map((i) => `${n}${i}`);
-}, je = (e) => {
+}, We = (e) => {
   const t = e.where.find((n) => n.operator !== "in" || !Array.isArray(n.value) ? !1 : e.field === void 0 ? !0 : n.field === e.field);
   if (t && Array.isArray(t.value))
     return t.value.length;
-}, gi = (e) => {
+}, wi = (e) => {
   const t = e.plan.execution.baseStrategy;
   if (t.kind === "scan")
-    return e.adapterConfig.scanPageLimitMode === "unbounded" ? "ScanCommand: unbounded" : `ScanCommand: ${bi(e.adapterConfig.scanMaxPages)}`;
+    return e.adapterConfig.scanPageLimitMode === "unbounded" ? "ScanCommand: unbounded" : `ScanCommand: ${vi(e.adapterConfig.scanMaxPages)}`;
   if (t.kind === "query")
-    return `QueryCommand: ${yi()}`;
+    return `QueryCommand: ${hi()}`;
   if (t.kind === "multi-query") {
-    const n = je({
+    const n = We({
       where: e.plan.base.where,
       field: t.field
     });
     return n === void 0 ? "QueryCommand: unknown" : `QueryCommand: =${n}`;
   }
   if (t.kind === "batch-get") {
-    const n = je({ where: e.plan.base.where });
+    const n = We({ where: e.plan.base.where });
     return n === void 0 ? "BatchGetCommand: unknown" : `BatchGetCommand: =${Math.ceil(n / 100)} (chunks=${Math.ceil(n / 100)})`;
   }
   return "unknown";
-}, hi = (e) => {
-  const t = e.plan, n = E({
+}, Ci = (e) => {
+  const t = e.plan, n = k({
     model: t.base.model,
     getDefaultModelName: e.getDefaultModelName,
     config: e.adapterConfig
-  }), i = [], r = Ve(t.execution.baseStrategy).toUpperCase(), a = ae(t.execution.fetchLimit), o = t.execution.baseStrategy.kind !== "scan" ? "n/a" : ae(e.adapterConfig.scanMaxPages);
+  }), i = [], r = Ge(t.execution.baseStrategy).toUpperCase(), a = ce(t.execution.fetchLimit), o = t.execution.baseStrategy.kind !== "scan" ? "n/a" : ce(e.adapterConfig.scanMaxPages);
   i.push(
     `-> ${r} table=${n} fetchLimit=${a} scanMaxPages=${o} scanPageLimitMode=${e.adapterConfig.scanPageLimitMode}`
-  ), i.push(`   est: ${gi({ plan: t, adapterConfig: e.adapterConfig })}`), (t.constraints.hasOrConnector || t.constraints.hasClientOnlyOperator) && i.push(
+  ), i.push(`   est: ${wi({ plan: t, adapterConfig: e.adapterConfig })}`), (t.constraints.hasOrConnector || t.constraints.hasClientOnlyOperator) && i.push(
     `-> FILTER (client) or=${t.constraints.hasOrConnector} clientOnly=${t.constraints.hasClientOnlyOperator}`
   ), t.execution.requiresClientSort && i.push("-> SORT (client)"), (t.base.offset !== void 0 || t.base.limit !== void 0) && i.push(
-    `-> LIMIT offset=${t.base.offset ?? 0} limit=${ae(t.base.limit)}`
+    `-> LIMIT offset=${t.base.offset ?? 0} limit=${ce(t.base.limit)}`
   );
-  const d = t.joins.reduce((u, m) => {
-    const c = E({
+  const d = t.joins.reduce((l, m) => {
+    const c = k({
       model: m.model,
       getDefaultModelName: e.getDefaultModelName,
       config: e.adapterConfig
-    }), f = Ve(m.strategy), l = [];
-    return l.push(
+    }), f = Ge(m.strategy), u = [];
+    return u.push(
       `-> JOIN ${m.modelKey} relation=${m.relation} on ${m.on.from} = ${m.on.to} strategy=${f} table=${c}`
-    ), f === "query(pk)" && l.push("   note: uses BATCH-GET when >1 distinct key"), [...l, ...H(u, 1)];
+    ), f === "query(pk)" && u.push("   note: uses BATCH-GET when >1 distinct key"), [...u, ...z(l, 1)];
   }, i);
   return t.base.select && t.base.select.length > 0 ? [
     `-> PROJECT (${t.base.select.join(", ")})`,
-    ...H(d, 1)
-  ] : ["-> PROJECT (*)", ...H(d, 1)];
-}, Se = (e) => {
+    ...z(d, 1)
+  ] : ["-> PROJECT (*)", ...z(d, 1)];
+}, Fe = (e) => {
   const t = [];
   t.push("EXPLAIN DynamoDBAdapter"), t.push(`QUERY model=${e.plan.base.model}`);
-  const n = e.plan.base.where.map((i) => xi(i));
+  const n = e.plan.base.where.map((i) => Si(i));
   if (n.length > 0) {
     t.push("WHERE");
     for (const i of n)
       t.push(`  ${i}`);
   } else
     t.push("WHERE (none)");
-  return t.push("PLAN"), t.push(...H(hi(e), 1)), t.join(`
+  return t.push("PLAN"), t.push(...z(Ci(e), 1)), t.join(`
 `);
-}, re = (e, t) => {
+}, me = (e, t) => {
   const n = e[t.tableName];
   if (n)
     return n;
   const i = t.makeInitial();
   return e[t.tableName] = i, i;
-}, we = () => {
+}, De = () => {
   const e = {
     totals: {
       scanCommands: 0,
@@ -2185,7 +2187,7 @@ const et = (e, t) => {
   return {
     recordScan: (t) => {
       e.totals.scanCommands += 1;
-      const n = re(e.scans, {
+      const n = me(e.scans, {
         tableName: t.tableName,
         makeInitial: () => ({ commands: 0, items: 0 })
       });
@@ -2193,7 +2195,7 @@ const et = (e, t) => {
     },
     recordQuery: (t) => {
       e.totals.queryCommands += 1;
-      const n = re(e.queries, {
+      const n = me(e.queries, {
         tableName: t.tableName,
         makeInitial: () => ({ commands: 0, items: 0 })
       });
@@ -2201,7 +2203,7 @@ const et = (e, t) => {
     },
     recordBatchGet: (t) => {
       e.totals.batchGetCommands += 1;
-      const n = re(e.batchGets, {
+      const n = me(e.batchGets, {
         tableName: t.tableName,
         makeInitial: () => ({ commands: 0, keys: 0, retries: 0, items: 0 })
       });
@@ -2209,24 +2211,24 @@ const et = (e, t) => {
     },
     snapshot: () => e
   };
-}, se = (e) => Object.keys(e).sort((t, n) => t.localeCompare(n)), Ce = (e) => {
+}, fe = (e) => Object.keys(e).sort((t, n) => t.localeCompare(n)), Ke = (e) => {
   const t = [];
   t.push("ACTUAL"), t.push(
     `  commands: ScanCommand=${e.totals.scanCommands} QueryCommand=${e.totals.queryCommands} BatchGetCommand=${e.totals.batchGetCommands}`
   );
-  for (const n of se(e.scans)) {
+  for (const n of fe(e.scans)) {
     const i = e.scans[n];
     t.push(
       `  SCAN table=${n} commands=${i.commands} items=${i.items}`
     );
   }
-  for (const n of se(e.queries)) {
+  for (const n of fe(e.queries)) {
     const i = e.queries[n];
     t.push(
       `  QUERY table=${n} commands=${i.commands} items=${i.items}`
     );
   }
-  for (const n of se(e.batchGets)) {
+  for (const n of fe(e.batchGets)) {
     const i = e.batchGets[n];
     t.push(
       `  BATCH-GET table=${n} commands=${i.commands} keys=${i.keys} retries=${i.retries} items=${i.items}`
@@ -2234,7 +2236,7 @@ const et = (e, t) => {
   }
   return t.join(`
 `);
-}, vi = (e, t) => {
+}, Ti = (e, t) => {
   const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = () => {
     if (i.scanPageLimitMode === "unbounded")
       return Number.POSITIVE_INFINITY;
@@ -2247,14 +2249,14 @@ const et = (e, t) => {
   };
   return async ({
     model: d,
-    where: u
+    where: l
   }) => {
     const c = (() => {
       if (i.explainQueryPlans)
-        return we();
-    })(), f = (C) => (i.explainQueryPlans && c && console.log(Ce(c.snapshot())), C), l = R({
+        return De();
+    })(), f = (C) => (i.explainQueryPlans && c && console.log(Ke(c.snapshot())), C), u = _({
       model: d,
-      where: u,
+      where: l,
       select: void 0,
       sortBy: void 0,
       limit: void 0,
@@ -2264,30 +2266,30 @@ const et = (e, t) => {
       adapterConfig: i
     });
     i.explainQueryPlans && console.log(
-      Se({
-        plan: l,
+      Fe({
+        plan: u,
         adapterConfig: i,
         getDefaultModelName: a
       })
     );
-    const y = E({
+    const y = k({
       model: d,
       getDefaultModelName: a,
       config: i
-    }), g = () => s ? yn(s, y) : !1;
-    if (l.execution.requiresClientFilter || l.execution.baseStrategy.kind === "batch-get" ? !0 : g()) {
-      const T = await _({
+    }), v = () => s ? hn(s, y) : !1;
+    if (u.execution.requiresClientFilter || u.execution.baseStrategy.kind === "batch-get" ? !0 : v()) {
+      const T = await V({
         documentClient: n,
         adapterConfig: i,
         getFieldName: r,
         getDefaultModelName: a,
         transactionState: s
-      })(l, { operationStats: c });
+      })(u, { operationStats: c });
       return f(T.length);
     }
-    const S = Z(l.base.where);
-    if (l.execution.baseStrategy.kind === "query") {
-      const C = V({
+    const S = re(u.base.where);
+    if (u.execution.baseStrategy.kind === "query") {
+      const C = j({
         model: d,
         where: S,
         getFieldName: r,
@@ -2303,10 +2305,11 @@ const et = (e, t) => {
         model: d,
         where: C.remainingWhere,
         getFieldName: r
-      }), F = await jn({
+      }), F = await Un({
         documentClient: n,
         tableName: y,
         indexName: C.indexName,
+        consistentRead: i.requiresConsistentRead?.(d),
         keyConditionExpression: C.keyConditionExpression,
         filterExpression: T.filterExpression,
         expressionAttributeNames: {
@@ -2322,29 +2325,29 @@ const et = (e, t) => {
       });
       return f(F);
     }
-    const x = $({
+    const N = $({
       model: d,
       where: S,
       getFieldName: r
-    }), v = o(), w = await qn({
+    }), A = o(), w = await Gn({
       documentClient: n,
       tableName: y,
-      filterExpression: x.filterExpression,
-      expressionAttributeNames: x.expressionAttributeNames,
-      expressionAttributeValues: x.expressionAttributeValues,
-      maxPages: v,
+      filterExpression: N.filterExpression,
+      expressionAttributeNames: N.expressionAttributeNames,
+      expressionAttributeValues: N.expressionAttributeValues,
+      maxPages: A,
       explainDynamoOperations: i.explainDynamoOperations,
       operationStats: c
     });
     return f(w);
   };
-}, Ai = (e) => {
+}, Ii = (e) => {
   const t = /* @__PURE__ */ new Map(), n = (i) => {
     const r = e.schema[e.getDefaultModelName(i)]?.fields ?? {}, a = Object.entries(r).flatMap(([s, o]) => {
-      const d = o.fieldName ?? s, u = e.indexNameResolver({ model: i, field: d });
-      if (!u)
+      const d = o.fieldName ?? s, l = e.indexNameResolver({ model: i, field: d });
+      if (!l)
         return [];
-      const m = e.indexKeySchemaResolver?.({ model: i, indexName: u })?.sortKey;
+      const m = e.indexKeySchemaResolver?.({ model: i, indexName: l })?.sortKey;
       return m ? [d, m] : [d];
     });
     return Array.from(new Set(a));
@@ -2356,72 +2359,72 @@ const et = (e, t) => {
     const a = n(i);
     return t.set(i, a), a;
   };
-}, Si = (e, t) => {
+}, ki = (e, t) => {
   if (!t.some((i) => e[i] === null))
     return e;
   const n = Object.entries(e).filter(([i, r]) => r !== null ? !0 : !t.includes(i));
   return Object.fromEntries(n);
-}, wi = (e, t, n) => {
+}, Ei = (e, t, n) => {
   const i = t.filter((r) => e[r] !== void 0 ? !1 : n ? n.includes(r) : !0);
   return i.length === 0 ? e : i.reduce(
     (r, a) => ({ ...r, [a]: null }),
     { ...e }
   );
-}, Ci = (e, t) => {
-  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = (u) => E({
-    model: u,
+}, Fi = (e, t) => {
+  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = (l) => k({
+    model: l,
     getDefaultModelName: a,
     config: i
-  }), d = async (u) => {
+  }), d = async (l) => {
     try {
       await n.send(
-        new Mt({
-          TableName: u.tableName,
-          Item: u.item,
+        new Lt({
+          TableName: l.tableName,
+          Item: l.item,
           ConditionExpression: "attribute_not_exists(#pk)",
-          ExpressionAttributeNames: { "#pk": u.primaryKeyName }
+          ExpressionAttributeNames: { "#pk": l.primaryKeyName }
         })
       );
     } catch (m) {
-      throw ge(m) ? new h(
+      throw we(m) ? new h(
         "DUPLICATE_PRIMARY_KEY",
-        `A row with ${u.primaryKeyName} "${String(u.item[u.primaryKeyName])}" already exists in ${u.tableName}.`
+        `A row with ${l.primaryKeyName} "${String(l.item[l.primaryKeyName])}" already exists in ${l.tableName}.`
       ) : m;
     }
   };
   return async ({
-    model: u,
+    model: l,
     data: m
   }) => {
-    const c = o(u), f = r({ model: u, field: "id" }), l = Si(
+    const c = o(l), f = r({ model: l, field: "id" }), u = ki(
       m,
-      i.resolveIndexKeyAttributes?.(u) ?? []
+      i.resolveIndexKeyAttributes?.(l) ?? []
     );
-    return s ? (bn(s, {
+    return s ? (vn(s, {
       tableName: c,
       keyField: f,
-      item: l
-    }), m) : (await d({ tableName: c, primaryKeyName: f, item: l }), m);
+      item: u
+    }), m) : (await d({ tableName: c, primaryKeyName: f, item: u }), m);
   };
-}, St = (e, t) => {
+}, kt = (e, t) => {
   const { documentClient: n } = e, {
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  } = t, o = _({
+  } = t, o = V({
     documentClient: n,
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  }), d = (m) => E({
+  }), d = (m) => k({
     model: m,
     getDefaultModelName: a,
     config: i
-  }), u = (m) => r({ model: m, field: "id" });
+  }), l = (m) => r({ model: m, field: "id" });
   return async ({ model: m, where: c, limit: f }) => {
-    const l = d(m), y = R({
+    const u = d(m), y = _({
       model: m,
       where: c,
       select: void 0,
@@ -2431,47 +2434,55 @@ const et = (e, t) => {
       join: void 0,
       getFieldName: r,
       adapterConfig: i
-    }), g = await o(y);
-    if (g.length === 0)
+    }), v = await o(y);
+    if (v.length === 0)
       return 0;
-    const b = u(m), S = { deleted: 0 };
-    for (const x of g) {
+    const g = l(m), S = { deleted: 0 };
+    for (const N of v) {
       if (s) {
-        X(s, {
-          tableName: l,
-          keyField: b,
-          row: x,
+        const w = ae(s, {
+          tableName: u,
+          keyField: g,
+          row: N,
           next: null
-        }), S.deleted += 1;
+        });
+        Te(w, c.map((C) => r({ model: m, field: C.field }))), S.deleted += 1;
         continue;
       }
-      const v = await de(n, {
-        TableName: l,
-        Key: Ae({ item: x, keyField: b }),
+      const A = await Ne(n, {
+        TableName: u,
+        Key: ke({ item: N, keyField: g }),
+        ...ne(ee({
+          model: m,
+          where: Ee(c),
+          primaryKeyName: g,
+          getFieldName: r,
+          snapshot: N
+        })),
         ReturnValues: "ALL_OLD"
       });
-      v.applied && v.attributes && (S.deleted += 1);
+      A.applied && A.attributes && (S.deleted += 1);
     }
     return S.deleted;
   };
-}, Ti = (e, t) => {
-  const n = St(e, t);
+}, Di = (e, t) => {
+  const n = kt(e, t);
   return async ({ model: i, where: r }) => n({ model: i, where: r });
-}, Ii = (e, t) => {
-  const n = St(e, t);
+}, Ki = (e, t) => {
+  const n = kt(e, t);
   return async ({
     model: i,
     where: r
   }) => {
     await n({ model: i, where: r, limit: 1 });
   };
-}, ki = (e, t) => {
+}, Oi = (e, t) => {
   const { documentClient: n } = e, {
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  } = t, o = _({
+  } = t, o = V({
     documentClient: n,
     adapterConfig: i,
     getFieldName: r,
@@ -2480,42 +2491,42 @@ const et = (e, t) => {
   });
   return async ({
     model: d,
-    where: u,
+    where: l,
     limit: m,
     select: c,
     sortBy: f,
-    offset: l,
+    offset: u,
     join: y
   }) => {
-    const g = R({
+    const v = _({
       model: d,
-      where: u,
+      where: l,
       select: c,
       sortBy: f,
       limit: m,
-      offset: l,
+      offset: u,
       join: y,
       getFieldName: r,
       adapterConfig: i
     }), S = (() => {
       if (i.explainQueryPlans)
-        return we();
+        return De();
     })();
     i.explainQueryPlans && console.log(
-      Se({
-        plan: g,
+      Fe({
+        plan: v,
         adapterConfig: i,
         getDefaultModelName: a
       })
     );
-    const x = await o(g, { operationStats: S });
-    return i.explainQueryPlans && S && console.log(Ce(S.snapshot())), x;
+    const N = await o(v, { operationStats: S });
+    return i.explainQueryPlans && S && console.log(Ke(S.snapshot())), N;
   };
-}, Ei = (e, t) => {
-  const n = ki(e, t);
+}, Pi = (e, t) => {
+  const n = Oi(e, t);
   return async (i) => await n(i);
-}, Fi = (e, t) => {
-  const n = _({
+}, Mi = (e, t) => {
+  const n = V({
     documentClient: e.documentClient,
     adapterConfig: t.adapterConfig,
     getFieldName: t.getFieldName,
@@ -2527,7 +2538,7 @@ const et = (e, t) => {
     const a = t.getFieldName({
       model: r.model,
       field: "id"
-    }), s = gt({
+    }), s = wt({
       model: r.model,
       where: r.where,
       primaryKeyName: a,
@@ -2535,8 +2546,8 @@ const et = (e, t) => {
     });
     if (!s.pinned)
       return { buffered: !1 };
-    const o = z(t.transactionState, {
-      tableName: E({
+    const o = ie(t.transactionState, {
+      tableName: k({
         model: r.model,
         getDefaultModelName: t.getDefaultModelName,
         config: t.adapterConfig
@@ -2544,9 +2555,9 @@ const et = (e, t) => {
       keyField: a,
       keyValue: s.value
     });
-    return o ? o.current === null ? { buffered: !0, row: null } : { buffered: !0, row: ee({
+    return o ? o.current === null ? { buffered: !0, row: null } : { buffered: !0, row: se({
       items: [o.current],
-      where: q({ where: r.where })
+      where: B({ where: r.where })
     })[0] ?? null } : { buffered: !1 };
   };
   return async ({
@@ -2561,13 +2572,13 @@ const et = (e, t) => {
         return f.row;
     }
     if (t.primaryKeyLoader && o === void 0 && s === void 0 && a.length === 1) {
-      const f = a[0], l = f.operator ?? "eq", y = (f.connector ?? "AND").toUpperCase(), g = t.getFieldName({ model: r, field: "id" });
-      if (l === "eq" && xe(f) && y === "AND" && f.field === g) {
-        const b = f.value;
-        return b === void 0 ? null : await t.primaryKeyLoader.load({ model: r, key: b }) ?? null;
+      const f = a[0], u = f.operator ?? "eq", y = (f.connector ?? "AND").toUpperCase(), v = t.getFieldName({ model: r, field: "id" });
+      if (u === "eq" && Se(f) && y === "AND" && f.field === v) {
+        const g = f.value;
+        return g === void 0 ? null : await t.primaryKeyLoader.load({ model: r, key: g }) ?? null;
       }
     }
-    const d = R({
+    const d = _({
       model: r,
       where: a,
       select: s,
@@ -2579,19 +2590,19 @@ const et = (e, t) => {
       adapterConfig: t.adapterConfig
     }), m = (() => {
       if (t.adapterConfig.explainQueryPlans)
-        return we();
+        return De();
     })();
     t.adapterConfig.explainQueryPlans && console.log(
-      Se({
+      Fe({
         plan: d,
         adapterConfig: t.adapterConfig,
         getDefaultModelName: t.getDefaultModelName
       })
     );
     const c = await n(d, { operationStats: m });
-    return t.adapterConfig.explainQueryPlans && m && console.log(Ce(m.snapshot())), c.length === 0 ? null : c[0];
+    return t.adapterConfig.explainQueryPlans && m && console.log(Ke(m.snapshot())), c.length === 0 ? null : c[0];
   };
-}, qe = ":zero", Le = ":numberType", pe = ":nullType", Di = (e) => {
+}, He = ":zero", Qe = ":numberType", Je = ":nullType", Ri = (e) => {
   const t = e.indexKeyAttributes ?? [], n = Object.entries(e.set ?? {}).filter(
     ([, s]) => s !== void 0
   ), i = ([s, o]) => o !== null ? !1 : t.includes(s), r = n.filter(i).map(([s]) => s), a = n.filter((s) => !i(s)).reduce(
@@ -2614,30 +2625,30 @@ const et = (e, t) => {
       );
   }
   return { increment: { ...e.increment }, set: a, remove: r };
-}, Ki = (e) => {
+}, $i = (e) => {
   const t = `#inc${e.index}`, n = `:inc${e.index}`, i = { [t]: e.field };
   if (e.current === null)
     return {
       field: e.field,
       assignment: `${t} = ${n}`,
-      condition: `attribute_type(${t}, ${pe})`,
+      condition: `attribute_type(${t}, ${Je})`,
       expressionAttributeNames: i,
       expressionAttributeValues: {
         [n]: e.delta,
-        [pe]: "NULL"
+        [Je]: "NULL"
       },
       nextValue: e.delta
     };
   if (e.current === void 0 || typeof e.current == "number")
     return {
       field: e.field,
-      assignment: `${t} = if_not_exists(${t}, ${qe}) + ${n}`,
-      condition: `(attribute_not_exists(${t}) OR attribute_type(${t}, ${Le}))`,
+      assignment: `${t} = if_not_exists(${t}, ${He}) + ${n}`,
+      condition: `(attribute_not_exists(${t}) OR attribute_type(${t}, ${Qe}))`,
       expressionAttributeNames: i,
       expressionAttributeValues: {
         [n]: e.delta,
-        [qe]: 0,
-        [Le]: "N"
+        [He]: 0,
+        [Qe]: "N"
       },
       nextValue: (e.current ?? 0) + e.delta
     };
@@ -2645,7 +2656,7 @@ const et = (e, t) => {
     "INVALID_UPDATE",
     `incrementOne requires "${e.field}" to hold a number or null.`
   );
-}, Pi = (e) => {
+}, _i = (e) => {
   const t = `#set${e.index}`, n = `:set${e.index}`;
   return {
     field: e.field,
@@ -2654,15 +2665,15 @@ const et = (e, t) => {
     expressionAttributeValues: { [n]: e.value },
     nextValue: e.value
   };
-}, wt = (e) => Object.keys(e.increment).length > 0 || Object.keys(e.set).length > 0 || e.remove.length > 0, Be = (e) => {
-  if (!wt(e.assignments))
+}, Et = (e) => Object.keys(e.increment).length > 0 || Object.keys(e.set).length > 0 || e.remove.length > 0, Ye = (e) => {
+  if (!Et(e.assignments))
     throw new h(
       "INVALID_UPDATE",
       "incrementOne requires at least one increment or set assignment."
     );
   const t = [
     ...Object.entries(e.assignments.increment).map(
-      ([a, s], o) => Ki({
+      ([a, s], o) => $i({
         field: a,
         delta: s,
         index: o,
@@ -2670,7 +2681,7 @@ const et = (e, t) => {
       })
     ),
     ...Object.entries(e.assignments.set).map(
-      ([a, s], o) => Pi({ field: a, value: s, index: o })
+      ([a, s], o) => _i({ field: a, value: s, index: o })
     )
   ], n = e.assignments.remove.map((a, s) => ({
     token: `#rm${s}`,
@@ -2699,84 +2710,84 @@ const et = (e, t) => {
       r(e.snapshot)
     )
   };
-}, Oi = (e, t) => {
-  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = vt(e, t), d = (u) => {
-    const m = X(u.state, {
-      tableName: u.tableName,
-      keyField: u.primaryKeyName,
-      row: u.target.snapshot,
-      next: u.next,
-      assignedFields: u.assignedFields
+}, Vi = (e, t) => {
+  const { documentClient: n } = e, { adapterConfig: i, getFieldName: r, getDefaultModelName: a, transactionState: s } = t, o = Tt(e, t), d = (l) => {
+    const m = ae(l.state, {
+      tableName: l.tableName,
+      keyField: l.primaryKeyName,
+      row: l.target.snapshot,
+      next: l.next,
+      assignedFields: l.assignedFields
     });
-    return ut(m, u.pinnedFields), u.next;
+    return Te(m, l.pinnedFields), l.next;
   };
   return async ({
-    model: u,
+    model: l,
     where: m,
     increment: c,
     set: f
   }) => {
-    const l = Di({
+    const u = Ri({
       increment: c,
       set: f,
-      indexKeyAttributes: i.resolveIndexKeyAttributes?.(u)
-    }), y = E({
-      model: u,
+      indexKeyAttributes: i.resolveIndexKeyAttributes?.(l)
+    }), y = k({
+      model: l,
       getDefaultModelName: a,
       config: i
-    }), g = r({ model: u, field: "id" }), b = xt(m);
-    if (!wt(l))
-      return (await o.resolveTarget({ model: u, where: m }))?.snapshot ?? null;
+    }), v = r({ model: l, field: "id" }), g = Ee(m);
+    if (!Et(u))
+      return (await o.resolveTarget({ model: l, where: m }))?.snapshot ?? null;
     if (s) {
-      const x = await o.resolveTarget({ model: u, where: m });
-      return x ? d({
+      const N = await o.resolveTarget({ model: l, where: m });
+      return N ? d({
         state: s,
         tableName: y,
-        primaryKeyName: g,
-        target: x,
-        next: Be({
-          snapshot: x.snapshot,
-          assignments: l
+        primaryKeyName: v,
+        target: N,
+        next: Ye({
+          snapshot: N.snapshot,
+          assignments: u
         }).nextItem,
         assignedFields: [
-          ...Object.keys(l.increment),
-          ...Object.keys(l.set),
-          ...l.remove
+          ...Object.keys(u.increment),
+          ...Object.keys(u.set),
+          ...u.remove
         ],
         pinnedFields: [
-          ...b.map(
-            (w) => r({ model: u, field: w.field })
+          ...g.map(
+            (w) => r({ model: l, field: w.field })
           ),
-          ...Object.keys(l.increment)
+          ...Object.keys(u.increment)
         ]
       }) : null;
     }
-    return await At({
+    return await It({
       method: "incrementOne",
       reader: o,
-      model: u,
+      model: l,
       where: m,
-      write: (x) => {
-        const v = Be({
-          snapshot: x.snapshot,
-          assignments: l
+      write: (N) => {
+        const A = Ye({
+          snapshot: N.snapshot,
+          assignments: u
         });
-        return rt(n, {
+        return mt(n, {
           TableName: y,
-          Key: x.key,
-          UpdateExpression: v.updateExpression,
-          ...me(
-            ue({
-              model: u,
-              where: b,
-              primaryKeyName: g,
+          Key: N.key,
+          UpdateExpression: A.updateExpression,
+          ...ne(
+            ee({
+              model: l,
+              where: g,
+              primaryKeyName: v,
               getFieldName: r,
-              snapshot: x.snapshot
+              snapshot: N.snapshot
             }),
             {
-              conditions: v.counterConditions,
-              expressionAttributeNames: v.expressionAttributeNames,
-              expressionAttributeValues: v.expressionAttributeValues
+              conditions: A.counterConditions,
+              expressionAttributeNames: A.expressionAttributeNames,
+              expressionAttributeValues: A.expressionAttributeValues
             }
           ),
           ReturnValues: "ALL_NEW"
@@ -2784,26 +2795,26 @@ const et = (e, t) => {
       }
     });
   };
-}, Mi = (e) => Object.entries(e.update).reduce((t, [n, i]) => n === e.primaryKeyName && i === e.item[n] ? t : i === null && e.indexKeyAttributes.includes(n) ? { ...t, [n]: void 0 } : { ...t, [n]: i }, {}), $i = (e) => Object.entries(e).reduce((t, [n, i]) => i === void 0 ? t : { ...t, [n]: i }, {}), Ri = (e) => e ? { ReturnValues: "ALL_NEW" } : {}, _i = (e) => Object.keys(e).length === 0 ? {} : { ExpressionAttributeValues: e }, Ct = (e, t) => {
+}, Li = (e) => Object.entries(e.update).reduce((t, [n, i]) => n === e.primaryKeyName && i === e.item[n] ? t : i === null && e.indexKeyAttributes.includes(n) ? { ...t, [n]: void 0 } : { ...t, [n]: i }, {}), qi = (e) => Object.entries(e).reduce((t, [n, i]) => i === void 0 ? t : { ...t, [n]: i }, {}), ji = (e) => e ? { ReturnValues: "ALL_NEW" } : {}, pi = (e) => Object.keys(e).length === 0 ? {} : { ExpressionAttributeValues: e }, Ft = (e, t) => {
   const { documentClient: n } = e, {
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  } = t, o = _({
+  } = t, o = V({
     documentClient: n,
     adapterConfig: i,
     getFieldName: r,
     getDefaultModelName: a,
     transactionState: s
-  }), d = (c) => E({
+  }), d = (c) => k({
     model: c,
     getDefaultModelName: a,
     config: i
-  }), u = (c) => r({ model: c, field: "id" }), m = async (c) => {
-    const f = st(c.assignments), l = await rt(n, {
+  }), l = (c) => r({ model: c, field: "id" }), m = async (c) => {
+    const f = ft(c.assignments), u = await mt(n, {
       TableName: c.tableName,
-      Key: Ae({
+      Key: ke({
         item: c.item,
         keyField: c.primaryKeyName
       }),
@@ -2813,25 +2824,25 @@ const et = (e, t) => {
         ...f.expressionAttributeNames,
         "#pk": c.primaryKeyName
       },
-      ..._i(f.expressionAttributeValues),
-      ...Ri(c.returnUpdatedItems)
+      ...pi(f.expressionAttributeValues),
+      ...ji(c.returnUpdatedItems)
     });
-    if (l.applied)
-      return l.attributes ?? c.nextItem;
+    if (u.applied)
+      return u.attributes ?? c.nextItem;
   };
   return async ({
     model: c,
     where: f,
-    update: l,
+    update: u,
     limit: y,
-    returnUpdatedItems: g
+    returnUpdatedItems: v
   }) => {
-    if (Object.keys(l).length === 0)
+    if (Object.keys(u).length === 0)
       throw new h(
         "INVALID_UPDATE",
         "Update payload must include at least one defined value."
       );
-    const b = d(c), S = R({
+    const g = d(c), S = _({
       model: c,
       where: f,
       select: void 0,
@@ -2841,48 +2852,48 @@ const et = (e, t) => {
       join: void 0,
       getFieldName: r,
       adapterConfig: i
-    }), x = await o(S);
-    if (x.length === 0)
+    }), N = await o(S);
+    if (N.length === 0)
       return { updatedCount: 0, updatedItems: [] };
-    const v = u(c), w = {
+    const A = l(c), w = {
       updatedCount: 0,
       updatedItems: []
     }, C = i.resolveIndexKeyAttributes?.(c) ?? [];
-    for (const T of x) {
-      const F = Mi({
+    for (const T of N) {
+      const F = Li({
         item: T,
-        update: l,
-        primaryKeyName: v,
+        update: u,
+        primaryKeyName: A,
         indexKeyAttributes: C
-      }), D = $i({ ...T, ...F });
+      }), D = qi({ ...T, ...F });
       if (Object.keys(F).length === 0) {
         w.updatedItems.push(T), w.updatedCount += 1;
         continue;
       }
       if (s) {
-        X(s, {
-          tableName: b,
-          keyField: v,
+        ae(s, {
+          tableName: g,
+          keyField: A,
           row: T,
           next: D,
           assignedFields: Object.keys(F)
         }), w.updatedItems.push(D), w.updatedCount += 1;
         continue;
       }
-      const P = await m({
-        tableName: b,
-        primaryKeyName: v,
+      const K = await m({
+        tableName: g,
+        primaryKeyName: A,
         item: T,
         assignments: F,
         nextItem: D,
-        returnUpdatedItems: g
+        returnUpdatedItems: v
       });
-      P && (w.updatedItems.push(P), w.updatedCount += 1);
+      K && (w.updatedItems.push(K), w.updatedCount += 1);
     }
-    return g ? w : { updatedCount: w.updatedCount, updatedItems: [] };
+    return v ? w : { updatedCount: w.updatedCount, updatedItems: [] };
   };
-}, Vi = (e, t) => {
-  const n = Ct(e, t);
+}, Bi = (e, t) => {
+  const n = Ft(e, t);
   return async ({
     model: i,
     where: r,
@@ -2893,8 +2904,8 @@ const et = (e, t) => {
     update: a,
     returnUpdatedItems: !1
   })).updatedCount;
-}, ji = (e, t) => {
-  const n = Ct(e, t);
+}, Ui = (e, t) => {
+  const n = Ft(e, t);
   return async ({
     model: i,
     where: r,
@@ -2909,20 +2920,20 @@ const et = (e, t) => {
     });
     return s.updatedItems.length === 0 ? null : s.updatedItems[0];
   };
-}, Ue = (e) => String(e), qi = (e) => `${e.tableName}:${e.keyField}`, Li = (e) => {
+}, ze = (e) => String(e), Gi = (e) => `${e.tableName}:${e.keyField}`, Wi = (e) => {
   if (!e)
     throw new h(
       "MISSING_EXECUTOR_INPUT",
       "createPrimaryKeyBatchLoader requires explicit props."
     );
   const t = /* @__PURE__ */ new Map(), n = (a) => {
-    const s = E({
+    const s = k({
       model: a,
       getDefaultModelName: e.getDefaultModelName,
       config: e.adapterConfig
-    }), o = e.getFieldName({ model: a, field: "id" }), d = qi({ tableName: s, keyField: o }), u = t.get(d);
-    if (u)
-      return u;
+    }), o = e.getFieldName({ model: a, field: "id" }), d = Gi({ tableName: s, keyField: o }), l = t.get(d);
+    if (l)
+      return l;
     const m = {
       model: a,
       keyField: o,
@@ -2952,25 +2963,25 @@ const et = (e, t) => {
       );
     }
     try {
-      const d = await ve({
+      const d = await Ie({
         documentClient: e.documentClient,
         tableName: a.tableName,
         keyField: a.keyField,
         keys: o,
         explainDynamoOperations: e.adapterConfig.explainDynamoOperations
-      }), u = /* @__PURE__ */ new Map();
+      }), l = /* @__PURE__ */ new Map();
       for (const m of d) {
         const c = m[a.keyField];
-        c !== void 0 && u.set(Ue(c), m);
+        c !== void 0 && l.set(ze(c), m);
       }
       for (const [m, c] of s.entries()) {
-        const f = u.get(m) ?? null;
-        for (const l of c.pending)
-          l.resolve(f);
+        const f = l.get(m) ?? null;
+        for (const u of c.pending)
+          u.resolve(f);
       }
     } catch (d) {
-      for (const u of s.values())
-        for (const m of u.pending)
+      for (const l of s.values())
+        for (const m of l.pending)
           m.reject(d);
     }
   }, r = (a) => {
@@ -2980,103 +2991,135 @@ const et = (e, t) => {
   };
   return {
     load: async (a) => {
-      const s = n(a.model), o = Ue(a.key);
-      return new Promise((d, u) => {
+      const s = n(a.model), o = ze(a.key);
+      return new Promise((d, l) => {
         const m = s.pendingByToken.get(o);
         if (m) {
-          m.pending.push({ resolve: d, reject: u });
+          m.pending.push({ resolve: d, reject: l });
           return;
         }
         s.pendingByToken.set(o, {
           key: a.key,
-          pending: [{ resolve: d, reject: u }]
+          pending: [{ resolve: d, reject: l }]
         }), r(s);
       });
     }
   };
-}, pi = (e) => {
+}, Hi = (e) => {
+  const t = (s) => e.options.rateLimit?.storage !== "database" ? !1 : e.getDefaultModelName(s) === "rateLimit", n = (s) => `rate-limit:${Ot("sha256").update(s).digest("hex")}`;
+  return { create: (s) => {
+    if (!t(s.model))
+      return s;
+    const o = e.getFieldName({ model: s.model, field: "key" }), d = s.data[o];
+    if (typeof d != "string" || d.length === 0)
+      throw new h("INVALID_RATE_LIMIT_KEY", "A database rate-limit row requires a non-empty string key.");
+    const l = e.getFieldName({ model: s.model, field: "id" });
+    return { ...s, data: { ...s.data, [l]: n(d) } };
+  }, where: (s) => {
+    if (!t(s.model) || !s.where || s.where.some((l) => l.connector === "OR"))
+      return s;
+    const o = e.getFieldName({ model: s.model, field: "key" }), d = s.where.find(
+      (l) => e.getFieldName({ model: s.model, field: l.field }) === o && (l.operator ?? "eq") === "eq" && l.mode !== "insensitive" && typeof l.value == "string"
+    );
+    return !d || typeof d.value != "string" ? s : {
+      ...s,
+      where: [
+        ...s.where,
+        { field: e.getFieldName({ model: s.model, field: "id" }), value: n(d.value), connector: "AND" }
+      ]
+    };
+  }, assertMutable: (s, o) => {
+    if (!t(s))
+      return;
+    if (o === null || typeof o != "object" || Array.isArray(o))
+      throw new h("INVALID_UPDATE", "Database rate-limit assignments must be an object.");
+    if (["key", "id"].map((l) => e.getFieldName({ model: s, field: l })).some((l) => Object.hasOwn(o, l)))
+      throw new h("INVALID_UPDATE", "Database rate-limit key and id are immutable; delete the row and create a new key instead.");
+  }, applies: t };
+}, Qi = (e) => {
   if (!e)
     throw new h("MISSING_CLIENT", "DynamoDB adapter requires a DynamoDBDocumentClient instance.");
   return e;
-}, Ge = (e) => {
+}, Xe = (e) => {
   const { documentClient: t, transactionState: n } = e;
-  return ({ getFieldName: i, getDefaultModelName: r, schema: a }) => {
-    const s = (A) => {
-      const k = r(A);
-      return a[k]?.modelName ?? k;
-    }, o = (A) => e.adapterConfig.indexNameResolver({ ...A, model: s(A.model) }), d = e.adapterConfig.indexKeySchemaResolver, m = (() => {
-      if (d)
-        return (A) => d({ ...A, model: s(A.model) });
-    })(), c = Ai({
-      schema: a,
-      getDefaultModelName: r,
-      indexNameResolver: o,
-      indexKeySchemaResolver: m
-    }), f = {
+  return ({ options: i, getFieldName: r, getDefaultModelName: a, schema: s }) => {
+    const o = Hi({ options: i, getFieldName: r, getDefaultModelName: a }), d = (b) => {
+      const E = a(b);
+      return s[E]?.modelName ?? E;
+    }, l = (b) => e.adapterConfig.indexNameResolver({ ...b, model: d(b.model) }), m = e.adapterConfig.indexKeySchemaResolver, f = (() => {
+      if (m)
+        return (b) => m({ ...b, model: d(b.model) });
+    })(), u = Ii({
+      schema: s,
+      getDefaultModelName: a,
+      indexNameResolver: l,
+      indexKeySchemaResolver: f
+    }), y = {
       ...e.adapterConfig,
-      indexNameResolver: o,
-      indexKeySchemaResolver: m,
-      resolveSchemaModelName: (A) => a[A]?.modelName,
-      resolveIndexKeyAttributes: c
-    }, l = (A, k, O) => {
-      if (A == null)
-        return A;
-      const N = O?.map((I) => i({ model: k, field: I }));
-      return wi(
-        A,
-        c(k),
-        N
+      indexNameResolver: l,
+      indexKeySchemaResolver: f,
+      resolveSchemaModelName: (b) => s[b]?.modelName,
+      resolveIndexKeyAttributes: u,
+      requiresConsistentRead: o.applies
+    }, v = (b, E, R) => {
+      if (b == null)
+        return b;
+      const H = R?.map((q) => r({ model: E, field: q }));
+      return Ei(
+        b,
+        u(E),
+        H
       );
-    }, y = (A, k) => Array.isArray(A) ? A.map((O) => l(O, k)) : l(A, k), g = (A, k) => {
-      const O = l(A, k.model, k.select);
-      return O == null || !k.join ? O : Object.keys(k.join).reduce(
-        (N, I) => ({
-          ...N,
-          [I]: y(N[I], I)
+    }, g = (b, E) => Array.isArray(b) ? b.map((R) => v(R, E)) : v(b, E), S = (b, E) => {
+      const R = v(b, E.model, E.select);
+      return R == null || !E.join ? R : Object.keys(E.join).reduce(
+        (H, q) => ({
+          ...H,
+          [q]: g(H[q], q)
         }),
-        { ...O }
+        { ...R }
       );
-    }, b = { documentClient: t }, S = Li({
+    }, N = { documentClient: t }, A = Wi({
       documentClient: t,
-      adapterConfig: f,
-      getFieldName: i,
-      getDefaultModelName: r
-    }), x = {
-      adapterConfig: f,
-      getFieldName: i,
-      getDefaultModelName: r,
+      adapterConfig: y,
+      getFieldName: r,
+      getDefaultModelName: a
+    }), w = {
+      adapterConfig: y,
+      getFieldName: r,
+      getDefaultModelName: a,
       transactionState: n
-    }, v = x, w = x, C = x, T = x, F = x, D = Fi(b, {
-      ...x,
-      primaryKeyLoader: S
-    }), P = Ei(b, x), L = ji(b, w), p = fi(b, F), B = Oi(b, F);
+    }, C = w, T = w, F = w, D = w, K = w, U = Mi(N, {
+      ...w,
+      primaryKeyLoader: A
+    }), G = Pi(N, w), W = Ui(N, T), M = gi(N, K), ue = Vi(N, K), de = Fi(N, D), x = Ti(N, C), I = Bi(N, T), P = Ki(N, F), L = Di(N, F);
     return {
-      create: Ci(b, T),
-      findOne: async (A) => g(await D(A), A),
-      findMany: async (A) => (await P(A)).map((k) => g(k, A)),
-      count: vi(b, v),
-      update: async (A) => g(await L(A), A),
-      updateMany: Vi(b, w),
-      delete: Ii(b, C),
-      deleteMany: Ti(b, C),
+      create: async (b) => de(o.create(b)),
+      findOne: async (b) => S(await U(o.where(b)), b),
+      findMany: async (b) => (await G(o.where(b))).map((E) => S(E, b)),
+      count: async (b) => x(o.where(b)),
+      update: async (b) => (o.assertMutable(b.model, b.update), S(await W(o.where(b)), b)),
+      updateMany: async (b) => (o.assertMutable(b.model, b.update), I(o.where(b))),
+      delete: async (b) => P(o.where(b)),
+      deleteMany: async (b) => L(o.where(b)),
       // Better Auth >= 1.6 consumes single-use rows and mutates guarded counters
       // through these two methods. Its fallback for adapters without them is a
       // snapshot-guarded deleteMany / updateMany, which cannot be atomic here:
       // DynamoDB only makes a write conditional inside the keyed request itself.
-      consumeOne: async (A) => g(await p(A), A),
-      incrementOne: async (A) => g(await B(A), A),
-      createSchema: async (A) => ({
-        code: Gt({
-          tables: A.tables,
-          file: A.file,
-          tableNamePrefix: f.tableNamePrefix
+      consumeOne: async (b) => S(await M(o.where(b)), b),
+      incrementOne: async (b) => (o.assertMutable(b.model, { ...b.increment, ...b.set }), S(await ue(o.where(b)), b)),
+      createSchema: async (b) => ({
+        code: Yt({
+          tables: b.tables,
+          file: b.file,
+          tableNamePrefix: y.tableNamePrefix
         }),
-        path: A.file ?? "dynamodb-tables.ts",
+        path: b.file ?? "dynamodb-tables.ts",
         overwrite: !0
       })
     };
   };
-}, ia = (e) => {
+}, ua = (e) => {
   if (!e.indexNameResolver)
     throw new h(
       "MISSING_INDEX_RESOLVER",
@@ -3095,7 +3138,7 @@ const et = (e, t) => {
     indexNameResolver: e.indexNameResolver,
     indexKeySchemaResolver: e.indexKeySchemaResolver,
     transaction: e.transaction ?? !1
-  }, n = pi(t.documentClient), i = { value: null }, r = {
+  }, n = Qi(t.documentClient), i = { value: null }, r = {
     config: {
       adapterId: "dynamodb-adapter",
       adapterName: "DynamoDB Adapter",
@@ -3106,7 +3149,7 @@ const et = (e, t) => {
       supportsUUIDs: !1,
       supportsNumericIds: !1,
       supportsDates: !1,
-      customIdGenerator: e.customIdGenerator ?? (() => Et()),
+      customIdGenerator: e.customIdGenerator ?? (() => Pt()),
       disableIdGeneration: e.disableIdGeneration,
       mapKeysTransformInput: e.mapKeysTransformInput,
       mapKeysTransformOutput: e.mapKeysTransformOutput,
@@ -3114,7 +3157,7 @@ const et = (e, t) => {
       customTransformOutput: e.customTransformOutput,
       transaction: !1
     },
-    adapter: Ge({
+    adapter: Xe({
       documentClient: n,
       adapterConfig: t
     })
@@ -3123,27 +3166,27 @@ const et = (e, t) => {
     const o = i.value;
     if (!o)
       throw new h("MISSING_CLIENT", "DynamoDB adapter options are not initialized.");
-    const d = fn(), u = Te({
+    const d = gn(), l = Oe({
       config: { ...r.config, transaction: !1 },
-      adapter: Ge({
+      adapter: Xe({
         documentClient: n,
         adapterConfig: t,
         transactionState: d
       })
-    })(o), m = await s(u);
-    return await xn({ documentClient: n, state: d }), m;
+    })(o), m = await s(l);
+    return await Sn({ documentClient: n, state: d }), m;
   });
-  const a = Te(r);
+  const a = Oe(r);
   return (s) => (i.value = s, a(s));
-}, oe = async (e) => {
+}, ye = async (e) => {
   e <= 0 || await new Promise((t) => {
     setTimeout(() => t(), e);
   });
-}, Bi = async (e) => {
+}, Ji = async (e) => {
   const t = [], n = { lastEvaluatedTableName: void 0 };
   for (; ; ) {
     const i = await e.send(
-      new Vt({
+      new Bt({
         ExclusiveStartTableName: n.lastEvaluatedTableName
       })
     );
@@ -3151,46 +3194,46 @@ const et = (e, t) => {
       break;
   }
   return t;
-}, fe = async (e, t) => {
-  const n = await e.send(new jt({ TableName: t }));
+}, ge = async (e, t) => {
+  const n = await e.send(new Ut({ TableName: t }));
   if (!n.Table)
     throw new h(
       "MISSING_TABLE_SCHEMA",
       `DescribeTable did not return a Table for ${t}.`
     );
   return n.Table;
-}, We = (e) => (e ?? []).map((n) => ({
+}, Ze = (e) => (e ?? []).map((n) => ({
   attributeName: n.AttributeName ?? "",
   keyType: n.KeyType ?? ""
-})).filter((n) => n.attributeName.length > 0 && n.keyType.length > 0), He = (e) => {
+})).filter((n) => n.attributeName.length > 0 && n.keyType.length > 0), et = (e) => {
   const t = e?.ProjectionType ?? "", n = [...e?.NonKeyAttributes ?? []].sort(
     (i, r) => i.localeCompare(r)
   );
   return { projectionType: t, nonKeyAttributes: n };
-}, Qe = (e) => ({
+}, tt = (e) => ({
   read: e?.ReadCapacityUnits,
   write: e?.WriteCapacityUnits
-}), Ui = (e) => {
-  const t = We(e.existing.KeySchema), n = We(e.desired.KeySchema);
+}), Yi = (e) => {
+  const t = Ze(e.existing.KeySchema), n = Ze(e.desired.KeySchema);
   if (t.length !== n.length)
     return !1;
   for (const [o, d] of t.entries()) {
-    const u = n[o];
-    if (!u || d.attributeName !== u.attributeName || d.keyType !== u.keyType)
+    const l = n[o];
+    if (!l || d.attributeName !== l.attributeName || d.keyType !== l.keyType)
       return !1;
   }
-  const i = He(e.existing.Projection), r = He(e.desired.Projection);
+  const i = et(e.existing.Projection), r = et(e.desired.Projection);
   if (i.projectionType !== r.projectionType || i.nonKeyAttributes.length !== r.nonKeyAttributes.length)
     return !1;
   for (const [o, d] of i.nonKeyAttributes.entries())
     if (d !== r.nonKeyAttributes[o])
       return !1;
-  const a = Qe(e.existing.ProvisionedThroughput), s = Qe(e.desired.ProvisionedThroughput);
+  const a = tt(e.existing.ProvisionedThroughput), s = tt(e.desired.ProvisionedThroughput);
   return !(a.read !== s.read || a.write !== s.write);
-}, Gi = (e) => (e.GlobalSecondaryIndexes ?? []).reduce((n, i) => (n.set(i.IndexName ?? "", i), n), /* @__PURE__ */ new Map()), Tt = (e) => (e.attributeDefinitions ?? []).reduce((n, i) => (i.AttributeName && n.set(i.AttributeName, i), n), /* @__PURE__ */ new Map()), Wi = (e) => (e.KeySchema ?? []).map((n) => n.AttributeName).filter((n) => typeof n == "string" && n.length > 0), Hi = (e) => {
-  const t = Tt({
+}, zi = (e) => (e.GlobalSecondaryIndexes ?? []).reduce((n, i) => (n.set(i.IndexName ?? "", i), n), /* @__PURE__ */ new Map()), Dt = (e) => (e.attributeDefinitions ?? []).reduce((n, i) => (i.AttributeName && n.set(i.AttributeName, i), n), /* @__PURE__ */ new Map()), Xi = (e) => (e.KeySchema ?? []).map((n) => n.AttributeName).filter((n) => typeof n == "string" && n.length > 0), Zi = (e) => {
+  const t = Dt({
     attributeDefinitions: e.desiredTableAttributeDefinitions
-  }), n = [], i = Wi(e.index);
+  }), n = [], i = Xi(e.index);
   for (const r of i) {
     const a = e.existing.get(r);
     if (a) {
@@ -3211,20 +3254,20 @@ const et = (e, t) => {
     n.push(s);
   }
   return n;
-}, It = async (e) => {
+}, Kt = async (e) => {
   const t = Date.now(), n = Math.max(0, (e.wait.maxWaitTime ?? 60) * 1e3), i = Math.max(0, (e.wait.minDelay ?? 2) * 1e3), r = e.presentGsiNames ?? [], a = e.absentGsiNames ?? [];
   for (; ; ) {
-    const s = await fe(e.client, e.tableName), o = s.TableStatus ?? "", u = (s.GlobalSecondaryIndexes ?? []).reduce((f, l) => {
-      const y = l.IndexName ?? "";
-      return y.length === 0 || f.set(y, l.IndexStatus ?? ""), f;
-    }, /* @__PURE__ */ new Map()), m = r.every((f) => u.get(f) === "ACTIVE"), c = a.every((f) => !u.has(f));
+    const s = await ge(e.client, e.tableName), o = s.TableStatus ?? "", l = (s.GlobalSecondaryIndexes ?? []).reduce((f, u) => {
+      const y = u.IndexName ?? "";
+      return y.length === 0 || f.set(y, u.IndexStatus ?? ""), f;
+    }, /* @__PURE__ */ new Map()), m = r.every((f) => l.get(f) === "ACTIVE"), c = a.every((f) => !l.has(f));
     if (o !== "ACTIVE") {
       if (Date.now() - t > n)
         throw new h(
           "TABLE_WAIT_TIMEOUT",
           `Timed out waiting for table ${e.tableName} to become ready.`
         );
-      await oe(i);
+      await ye(i);
       continue;
     }
     if (!m) {
@@ -3233,7 +3276,7 @@ const et = (e, t) => {
           "TABLE_WAIT_TIMEOUT",
           `Timed out waiting for table ${e.tableName} to become ready.`
         );
-      await oe(i);
+      await ye(i);
       continue;
     }
     if (!c) {
@@ -3242,14 +3285,14 @@ const et = (e, t) => {
           "TABLE_WAIT_TIMEOUT",
           `Timed out waiting for table ${e.tableName} to become ready.`
         );
-      await oe(i);
+      await ye(i);
       continue;
     }
     return;
   }
-}, Qi = async (e) => {
+}, ea = async (e) => {
   await e.client.send(
-    new Xe({
+    new rt({
       TableName: e.tableName,
       GlobalSecondaryIndexUpdates: [
         {
@@ -3257,22 +3300,22 @@ const et = (e, t) => {
         }
       ]
     })
-  ), await It({
+  ), await Kt({
     client: e.client,
     tableName: e.tableName,
     wait: e.wait,
     absentGsiNames: [e.indexName]
   });
-}, Je = async (e) => {
-  const t = Tt({
+}, nt = async (e) => {
+  const t = Dt({
     attributeDefinitions: e.existingAttributeDefinitions
-  }), n = Hi({
+  }), n = Zi({
     existing: t,
     desiredTableAttributeDefinitions: e.desiredTableAttributeDefinitions,
     index: e.index
   });
   await e.client.send(
-    new Xe({
+    new rt({
       TableName: e.tableName,
       AttributeDefinitions: n.length > 0 ? n : void 0,
       GlobalSecondaryIndexUpdates: [
@@ -3286,31 +3329,31 @@ const et = (e, t) => {
         }
       ]
     })
-  ), await It({
+  ), await Kt({
     client: e.client,
     tableName: e.tableName,
     wait: e.wait,
     presentGsiNames: [e.index.IndexName ?? ""].filter((i) => i.length > 0)
   });
-}, Ji = async (e) => {
+}, ta = async (e) => {
   if (!e.client)
     throw new h(
       "MISSING_CLIENT",
       "DynamoDB applyTableSchemas requires a DynamoDBClient instance."
     );
-  const t = e.wait ?? { maxWaitTime: 60, minDelay: 2 }, n = await Bi(e.client), i = [], r = /* @__PURE__ */ new Set();
+  const t = e.wait ?? { maxWaitTime: 60, minDelay: 2 }, n = await Ji(e.client), i = [], r = /* @__PURE__ */ new Set();
   for (const a of e.tables) {
     const s = a.tableDefinition, o = s.globalSecondaryIndexes ?? [];
     if (!n.includes(a.tableName)) {
       await e.client.send(
-        new Rt({
+        new jt({
           TableName: a.tableName,
           AttributeDefinitions: s.attributeDefinitions,
           KeySchema: s.keySchema,
           BillingMode: s.billingMode,
           GlobalSecondaryIndexes: s.globalSecondaryIndexes
         })
-      ), await _t(
+      ), await pt(
         { client: e.client, ...t },
         { TableName: a.tableName }
       ), i.push(a.tableName);
@@ -3318,14 +3361,14 @@ const et = (e, t) => {
     }
     if (o.length === 0)
       continue;
-    const d = await fe(e.client, a.tableName), u = Gi(d);
+    const d = await ge(e.client, a.tableName), l = zi(d);
     for (const m of o) {
       const c = m.IndexName ?? "";
       if (c.length === 0)
         continue;
-      const f = u.get(c);
+      const f = l.get(c);
       if (!f) {
-        await Je({
+        await nt({
           client: e.client,
           tableName: a.tableName,
           index: m,
@@ -3335,19 +3378,19 @@ const et = (e, t) => {
         }), r.add(a.tableName);
         continue;
       }
-      if (Ui({
+      if (Yi({
         existing: f,
         desired: m
       }))
         continue;
-      await Qi({
+      await ea({
         client: e.client,
         tableName: a.tableName,
         indexName: c,
         wait: t
       });
-      const y = await fe(e.client, a.tableName);
-      await Je({
+      const y = await ge(e.client, a.tableName);
+      await nt({
         client: e.client,
         tableName: a.tableName,
         index: m,
@@ -3361,7 +3404,7 @@ const et = (e, t) => {
     createdTables: i,
     updatedTables: Array.from(r.values())
   };
-}, aa = async (e) => (await Ji(e)).createdTables, Yi = [
+}, da = async (e) => (await ta(e)).createdTables, na = [
   {
     tableName: "user",
     tableDefinition: {
@@ -3504,7 +3547,7 @@ const et = (e, t) => {
       }
     ]
   }
-], ra = Yi, sa = (e) => {
+], ca = na, ma = (e) => {
   if (e.length === 0)
     throw new Error("index resolver creation requires table schemas.");
   const t = /* @__PURE__ */ new Map(), n = /* @__PURE__ */ new Map();
@@ -3537,14 +3580,14 @@ const et = (e, t) => {
 };
 export {
   h as DynamoDBAdapterError,
-  Ji as applyTableSchemas,
-  Ze as convertToTableSchemas,
-  Yi as coreTableSchemas,
-  sa as createIndexResolversFromSchemas,
-  aa as createTables,
-  qt as defaultCompositeIndexes,
-  Lt as defaultSchemaExtensions,
-  ia as dynamodbAdapter,
-  na as generateTableSchemas,
-  ra as multiTableSchemas
+  ta as applyTableSchemas,
+  st as convertToTableSchemas,
+  na as coreTableSchemas,
+  ma as createIndexResolversFromSchemas,
+  da as createTables,
+  Gt as defaultCompositeIndexes,
+  Wt as defaultSchemaExtensions,
+  ua as dynamodbAdapter,
+  la as generateTableSchemas,
+  ca as multiTableSchemas
 };

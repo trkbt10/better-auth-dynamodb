@@ -21,4 +21,3 @@ export declare const buildQueryPlan: (props: {
     }) => string;
     adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver" | "indexKeySchemaResolver">;
 }) => AdapterQueryPlan;
-//# sourceMappingURL=build-query-plan.d.ts.map

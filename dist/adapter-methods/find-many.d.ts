@@ -29,4 +29,3 @@ export type FindManyOptions = {
 export declare const createFindManyExecutor: (client: AdapterClientContainer, options: FindManyOptions) => ({ model, where, limit, select, sortBy, offset, join, }: FindManyInput) => Promise<import("../adapter/executor/where-evaluator").DynamoDBItem[]>;
 export declare const createFindManyMethod: (client: AdapterClientContainer, options: FindManyOptions) => <T>(input: FindManyInput) => Promise<T[]>;
 export {};
-//# sourceMappingURL=find-many.d.ts.map

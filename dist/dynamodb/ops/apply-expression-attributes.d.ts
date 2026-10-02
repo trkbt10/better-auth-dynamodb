@@ -14,4 +14,3 @@ type ExpressionCommandInput = {
 };
 export declare const applyExpressionAttributes: <T extends ExpressionCommandInput>(commandInput: T, props: ExpressionAttributes) => void;
 export {};
-//# sourceMappingURL=apply-expression-attributes.d.ts.map

@@ -25,4 +25,3 @@ export declare const generateTableSchemas: (options: BetterAuthOptions, schemaOp
  * @returns Array of TableSchema
  */
 export declare const convertToTableSchemas: (tables: BetterAuthDBSchema, schemaOptions?: GenerateTableSchemasOptions) => TableSchema[];
-//# sourceMappingURL=from-better-auth.d.ts.map

@@ -1,0 +1,42 @@
+name: Chaos stress tests
+
+on:
+  schedule:
+    - cron: "41 19 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chaos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Run 1,000 seeds per profile and 60 seeds per auth flow
+        run: |
+          mkdir -p artifacts
+          bun run test:chaos:stress --reporter=default --reporter=json --outputFile.json=artifacts/chaos-stress.json
+      - name: Save replay information and results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: chaos-stress-results
+          path: artifacts/chaos-stress.json
+          if-no-files-found: warn
+          retention-days: 14

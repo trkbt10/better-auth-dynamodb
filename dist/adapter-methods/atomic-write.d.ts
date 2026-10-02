@@ -108,4 +108,3 @@ export declare const settleAtomicWrite: (props: {
     where: Where[];
     write: (target: AtomicTarget) => Promise<ConditionalWriteResult>;
 }) => Promise<DynamoDBItem | null>;
-//# sourceMappingURL=atomic-write.d.ts.map

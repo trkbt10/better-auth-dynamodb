@@ -3,7 +3,7 @@
  */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import type { DynamoDBAdapterConfig } from "../../adapter";
+import type { DynamoDBAdapterConfig, ResolvedDynamoDBAdapterConfig } from "../../adapter";
 import type { AdapterQueryPlan, NormalizedWhere } from "../query-plan";
 import type { DynamoDBWhere } from "../../dynamodb/types";
 import type { DynamoDBItem } from "./where-evaluator";
@@ -33,6 +33,8 @@ import { toDynamoWhere } from "../planner/normalize-where";
 export type AdapterExecutionContext = {
 	operationStats?: DynamoDBOperationStatsCollector | undefined;
 };
+
+type QueryExecutorConfig = DynamoDBAdapterConfig & Pick<ResolvedDynamoDBAdapterConfig, "requiresConsistentRead">;
 
 const resolveRequiresClientFilter = (props: {
 	strategy: AdapterQueryPlan["execution"]["baseStrategy"];
@@ -78,7 +80,7 @@ const resolveSortedItems = <T extends Record<string, unknown>>(props: {
 };
 
 const resolveScanMaxPages = (props: {
-	adapterConfig: DynamoDBAdapterConfig;
+	adapterConfig: QueryExecutorConfig;
 }): number => {
 	if (props.adapterConfig.scanPageLimitMode === "unbounded") {
 		return Number.POSITIVE_INFINITY;
@@ -116,7 +118,7 @@ const resolvePrimaryKeyValues = (props: {
 const fetchBaseItems = async (props: {
 	plan: AdapterQueryPlan;
 	documentClient: DynamoDBDocumentClient;
-	adapterConfig: DynamoDBAdapterConfig;
+	adapterConfig: QueryExecutorConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
 	operationStats?: DynamoDBOperationStatsCollector | undefined;
@@ -254,6 +256,7 @@ const fetchBaseItems = async (props: {
 				documentClient: props.documentClient,
 				tableName,
 				indexName,
+				consistentRead: props.adapterConfig.requiresConsistentRead?.(props.plan.base.model),
 				keyConditionExpression: keyCondition.keyConditionExpression,
 			filterExpression: filter.filterExpression,
 			expressionAttributeNames: {
@@ -308,7 +311,7 @@ const applyOffsetLimit = <T>(props: {
 const resolveOverlayTable = (props: {
 	plan: AdapterQueryPlan;
 	transactionState: DynamoDBTransactionState | undefined;
-	adapterConfig: DynamoDBAdapterConfig;
+	adapterConfig: QueryExecutorConfig;
 	getDefaultModelName: (model: string) => string;
 }): { tableName: string; bufferedRows: number } | undefined => {
 	if (!props.transactionState) {
@@ -344,7 +347,7 @@ const withOverlayFetchLimit = (
 
 export const createQueryPlanExecutor = (props: {
 	documentClient: DynamoDBDocumentClient;
-	adapterConfig: DynamoDBAdapterConfig;
+	adapterConfig: QueryExecutorConfig;
 	getFieldName: (args: { model: string; field: string }) => string;
 	getDefaultModelName: (model: string) => string;
 	transactionState?: DynamoDBTransactionState | undefined;

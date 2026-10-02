@@ -17,4 +17,3 @@ export type DynamoDBScanOptions = {
 };
 export declare const scanItems: (options: DynamoDBScanOptions) => Promise<Record<string, NativeAttributeValue>[]>;
 export declare const scanCount: (options: Omit<DynamoDBScanOptions, "limit">) => Promise<number>;
-//# sourceMappingURL=scan.d.ts.map

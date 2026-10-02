@@ -8,4 +8,3 @@ export declare const toDynamoWhere: (where: NormalizedWhere[]) => DynamoDBWhere[
 export declare const normalizeWhere: (props: {
     where?: Where[] | undefined;
 }) => NormalizedWhere[];
-//# sourceMappingURL=normalize-where.d.ts.map

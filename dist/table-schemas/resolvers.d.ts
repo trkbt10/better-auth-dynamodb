@@ -29,4 +29,3 @@ import type { IndexResolverBundle, TableSchema } from "../dynamodb/types";
  * ```
  */
 export declare const createIndexResolversFromSchemas: (schemas: TableSchema[]) => IndexResolverBundle;
-//# sourceMappingURL=resolvers.d.ts.map

@@ -15,4 +15,3 @@ export type DynamoDBUpdateExpression = {
     expressionAttributeValues: Record<string, NativeAttributeValue>;
 };
 export declare const buildUpdateExpression: (update: Record<string, NativeAttributeValue | undefined>) => DynamoDBUpdateExpression;
-//# sourceMappingURL=build-update-expression.d.ts.map

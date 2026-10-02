@@ -20,4 +20,3 @@ type PaginateWithoutMaxPages<TToken> = PaginateBaseOptions<TToken> & {
 export type PaginateOptions<TToken> = PaginateWithMaxPages<TToken> | PaginateWithoutMaxPages<TToken>;
 export declare const paginate: <TToken>(options: PaginateOptions<TToken>) => Promise<void>;
 export {};
-//# sourceMappingURL=paginate.d.ts.map

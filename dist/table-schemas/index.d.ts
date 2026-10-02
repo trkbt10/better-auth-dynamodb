@@ -9,7 +9,7 @@
  * (user, session, account, verification) without plugin support:
  *
  * ```typescript
- * import { coreTableSchemas, createIndexResolversFromSchemas } from "better-auth-dynamodb";
+ * import { coreTableSchemas, createIndexResolversFromSchemas } from "@trkbt10/better-auth-dynamodb";
  *
  * const resolvers = createIndexResolversFromSchemas(coreTableSchemas);
  * await applyTableSchemas({ client, tables: coreTableSchemas });
@@ -20,7 +20,7 @@
  * your Better Auth configuration including plugins:
  *
  * ```typescript
- * import { generateTableSchemas, createIndexResolversFromSchemas } from "better-auth-dynamodb";
+ * import { generateTableSchemas, createIndexResolversFromSchemas } from "@trkbt10/better-auth-dynamodb";
  * import { twoFactor, organization } from "better-auth/plugins";
  *
  * const schemas = generateTableSchemas({
@@ -37,4 +37,3 @@ export { defaultCompositeIndexes } from "./composite-indexes";
 export { defaultSchemaExtensions } from "./schema-extensions";
 export type { CompositeIndex, GenerateTableSchemasOptions } from "./types";
 export type { FieldExtension, SchemaExtensions, TableExtension } from "./schema-extensions";
-//# sourceMappingURL=index.d.ts.map

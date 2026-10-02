@@ -56,4 +56,3 @@ export declare const evaluateWhereEntry: (props: {
     value: unknown;
 }) => boolean;
 export {};
-//# sourceMappingURL=where-operator.d.ts.map

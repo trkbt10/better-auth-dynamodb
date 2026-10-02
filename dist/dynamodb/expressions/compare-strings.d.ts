@@ -12,4 +12,3 @@
  * positive when `right` does, 0 when they are equal.
  */
 export declare const compareStrings: (left: string, right: string) => number;
-//# sourceMappingURL=compare-strings.d.ts.map

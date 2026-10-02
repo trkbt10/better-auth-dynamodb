@@ -45,4 +45,3 @@ export type DynamoDBOperationStatsCollector = {
 };
 export declare const createDynamoDBOperationStatsCollector: () => DynamoDBOperationStatsCollector;
 export declare const formatDynamoDBOperationStats: (stats: DynamoDBOperationStatsSnapshot) => string;
-//# sourceMappingURL=operation-stats.d.ts.map

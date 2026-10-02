@@ -16,4 +16,3 @@ export type ConditionalWriteResult = {
 export declare const isConditionalCheckFailure: (error: unknown) => boolean;
 export declare const sendConditionalDelete: (documentClient: DynamoDBDocumentClient, input: DeleteCommandInput) => Promise<ConditionalWriteResult>;
 export declare const sendConditionalUpdate: (documentClient: DynamoDBDocumentClient, input: UpdateCommandInput) => Promise<ConditionalWriteResult>;
-//# sourceMappingURL=conditional-write.d.ts.map

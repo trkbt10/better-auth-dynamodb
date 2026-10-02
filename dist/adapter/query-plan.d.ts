@@ -70,4 +70,3 @@ export type AdapterQueryPlan = {
     execution: ExecutionPlan;
     constraints: PlanConstraints;
 };
-//# sourceMappingURL=query-plan.d.ts.map

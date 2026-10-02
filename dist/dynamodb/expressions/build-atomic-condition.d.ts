@@ -41,4 +41,3 @@ export declare const buildAtomicCondition: (props: {
     snapshot?: Record<string, NativeAttributeValue> | undefined;
     pinnedFields?: string[] | undefined;
 }) => AtomicCondition;
-//# sourceMappingURL=build-atomic-condition.d.ts.map

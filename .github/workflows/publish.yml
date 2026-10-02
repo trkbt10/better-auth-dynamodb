@@ -1,0 +1,84 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      npm-tag: ${{ steps.release.outputs.npm-tag }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release version and branch
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          name=$(node -p "require('./package.json').name")
+          if [[ "$name" != "@trkbt10/better-auth-dynamodb" ]]; then
+            echo "Unexpected npm package name: $name" >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            echo "Release tag must be v$version; received $RELEASE_TAG" >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ "$version" == *-* ]]; then
+            if [[ "$PRERELEASE" != "true" ]]; then
+              echo "A prerelease version requires a GitHub prerelease." >&2
+              exit 1
+            fi
+            echo "npm-tag=next" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$PRERELEASE" == "true" ]]; then
+              echo "A GitHub prerelease requires a prerelease version in package.json." >&2
+              exit 1
+            fi
+            echo "npm-tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+  verify:
+    needs: validate-release
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [validate-release, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-package
+          path: artifacts/
+      - name: Publish the tested tarball with npm OIDC
+        env:
+          NPM_TAG: ${{ needs.validate-release.outputs.npm-tag }}
+        run: npm publish artifacts/package.tgz --access public --provenance --tag "$NPM_TAG"

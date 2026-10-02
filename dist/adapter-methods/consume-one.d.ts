@@ -13,4 +13,3 @@ export declare const createConsumeOneMethod: (client: AdapterClientContainer, op
     model: string;
     where: Where[];
 }) => Promise<T | null>;
-//# sourceMappingURL=consume-one.d.ts.map

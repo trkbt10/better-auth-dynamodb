@@ -13,4 +13,3 @@ export type DynamoDBBatchGetOptions = {
     backoffMaxDelayMs?: number | undefined;
 };
 export declare const batchGetItems: (options: DynamoDBBatchGetOptions) => Promise<Record<string, NativeAttributeValue>[]>;
-//# sourceMappingURL=batch-get.d.ts.map

@@ -31,4 +31,3 @@ export declare const resolveJoinStrategy: (props: {
     }) => string;
     adapterConfig: Pick<DynamoDBAdapterConfig, "indexNameResolver">;
 }) => ExecutionStrategy;
-//# sourceMappingURL=resolve-strategy.d.ts.map

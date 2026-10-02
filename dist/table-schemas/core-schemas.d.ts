@@ -26,4 +26,3 @@ export declare const coreTableSchemas: TableSchema[];
  * @deprecated Use `coreTableSchemas` instead. Will be removed in a future version.
  */
 export declare const multiTableSchemas: TableSchema[];
-//# sourceMappingURL=core-schemas.d.ts.map

@@ -5,6 +5,32 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocumentClientStub } from "../../../spec/dynamodb-document-client";
 import { queryCount, queryItems } from "./query";
 
+for (const query of [queryItems, queryCount]) {
+  test.each([
+    { indexName: undefined, consistentRead: true, expected: true },
+    { indexName: undefined, consistentRead: undefined, expected: undefined },
+    { indexName: "counter_key_idx", consistentRead: true, expected: undefined },
+  ])(`${query.name} only requests strong reads on an explicitly configured table query: %j`, async (settings) => {
+    const { documentClient, sendCalls } = createDocumentClientStub({ respond: async () => ({ Items: [], Count: 0 }) });
+    await query({
+      documentClient,
+      tableName: "counter",
+      indexName: settings.indexName,
+      consistentRead: settings.consistentRead,
+      keyConditionExpression: "#pk = :pk",
+      filterExpression: undefined,
+      expressionAttributeNames: { "#pk": "id" },
+      expressionAttributeValues: { ":pk": "1" },
+    });
+    expect(sendCalls).toHaveLength(1);
+    const command = sendCalls[0];
+    if (!(command instanceof QueryCommand)) {
+      throw new Error("Expected a DynamoDB query.");
+    }
+    expect(command.input.ConsistentRead).toBe(settings.expected);
+  });
+}
+
 describe("queryItems", () => {
 	test("reads full pages when a filter is applied and trims the result", async () => {
 		const { documentClient, sendCalls } = createDocumentClientStub({

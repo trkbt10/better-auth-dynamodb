@@ -18,4 +18,3 @@ export declare const createCountMethod: (client: AdapterClientContainer, options
     model: string;
     where?: Where[] | undefined;
 }) => Promise<number>;
-//# sourceMappingURL=count.d.ts.map

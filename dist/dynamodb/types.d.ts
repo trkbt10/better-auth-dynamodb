@@ -42,4 +42,3 @@ export type DynamoDBWhere = {
     connector?: DynamoDBWhereConnector | undefined;
     mode?: DynamoDBWhereMode | undefined;
 };
-//# sourceMappingURL=types.d.ts.map

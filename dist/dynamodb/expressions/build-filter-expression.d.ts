@@ -17,4 +17,3 @@ export declare const buildFilterExpression: (props: {
         field: string;
     }) => string;
 }) => DynamoDBFilterExpression;
-//# sourceMappingURL=build-filter-expression.d.ts.map

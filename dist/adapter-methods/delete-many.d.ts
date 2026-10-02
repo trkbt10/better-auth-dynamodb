@@ -25,4 +25,3 @@ export declare const createDeleteManyMethod: (client: AdapterClientContainer, op
     where: Where[];
 }) => Promise<number>;
 export {};
-//# sourceMappingURL=delete-many.d.ts.map

@@ -15,4 +15,3 @@ import type { CompositeIndex } from "./types";
  * - verification: lookup by identifier + createdAt (verification codes)
  */
 export declare const defaultCompositeIndexes: Record<string, CompositeIndex[]>;
-//# sourceMappingURL=composite-indexes.d.ts.map

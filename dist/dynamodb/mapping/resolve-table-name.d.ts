@@ -14,4 +14,3 @@ export declare const resolveTableName: <TConfig extends TableNameConfig>(props: 
     getDefaultModelName: DefaultModelNameResolver;
     config: TConfig;
 }) => string;
-//# sourceMappingURL=resolve-table-name.d.ts.map

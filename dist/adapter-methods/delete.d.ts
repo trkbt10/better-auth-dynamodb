@@ -8,4 +8,3 @@ export declare const createDeleteMethod: (client: AdapterClientContainer, option
     model: string;
     where: Where[];
 }) => Promise<void>;
-//# sourceMappingURL=delete.d.ts.map

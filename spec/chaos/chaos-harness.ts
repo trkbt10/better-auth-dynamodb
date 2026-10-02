@@ -16,6 +16,7 @@ import {
 	type ChaosCluster,
 	type ChaosFaults,
 } from "./chaos-cluster";
+import { resolveChaosSeeds } from "./chaos-seeds";
 
 export type ChaosProfile = { name: string; faults: ChaosFaults };
 
@@ -62,30 +63,41 @@ export const CHAOS_PROFILES: ChaosProfile[] = [
 			unprocessedKeysRate: 0.2,
 		},
 	},
+	{
+		name: "every eventual read lags behind",
+		faults: { ...LAG, staleReadRate: 1, maxLag: 32, fracturedReads: false },
+	},
+	{
+		name: "every lost write response is re-sent",
+		faults: { ...LAG, lostResponseRate: 1, resendLostRequests: true },
+	},
+	{
+		name: "persistent partial batches and tiny pages",
+		faults: { ...LAG, shortPageRate: 1, unprocessedKeysRate: 1 },
+	},
+	{
+		name: "severe throttling with transaction conflicts",
+		faults: {
+			...LAG,
+			maxLag: 32,
+			rejectRate: 0.6,
+			transactionConflictRate: 0.6,
+			shortPageRate: 0.8,
+			unprocessedKeysRate: 0.8,
+		},
+	},
 ];
-
-const parsePositiveInteger = (value: string | undefined): number | undefined => {
-	if (value === undefined || value === "") {
-		return undefined;
-	}
-	const parsed = Number(value);
-	if (!Number.isInteger(parsed) || parsed < 0) {
-		throw new Error(`Expected a non-negative integer, got "${value}".`);
-	}
-	return parsed;
-};
 
 /**
  * The seeds of a run: `CHAOS_SEED` replays one, `CHAOS_RUNS` sets how many are
  * tried per profile (default 40).
  */
 export const resolveSeeds = (): number[] => {
-	const single = parsePositiveInteger(process.env.CHAOS_SEED);
-	if (single !== undefined) {
-		return [single];
-	}
-	const runs = parsePositiveInteger(process.env.CHAOS_RUNS) ?? 40;
-	return Array.from({ length: runs }, (_, index) => index + 1);
+	return resolveChaosSeeds({
+		seed: process.env.CHAOS_SEED,
+		runs: process.env.CHAOS_RUNS,
+		defaultRuns: 40,
+	});
 };
 
 export const CHAOS_OPTIONS: BetterAuthOptions = {
@@ -220,6 +232,10 @@ export const runChaos = async (props: {
 	/** Seeds to try instead of the default set (for scenarios that are slow per run). */
 	seeds?: number[] | undefined;
 }): Promise<ChaosTotals> => {
+	const seeds = props.seeds ?? resolveSeeds();
+	if (seeds.length === 0) {
+		throw new Error("Chaos verification requires at least one seed.");
+	}
 	const totals: ChaosTotals = {
 		runs: 0,
 		requests: 0,
@@ -231,13 +247,23 @@ export const runChaos = async (props: {
 		resent: 0,
 		transactionConflicts: 0,
 	};
-	for (const seed of props.seeds ?? resolveSeeds()) {
+	for (const seed of seeds) {
 		const environment = createChaosEnvironment({
 			seed,
 			profile: props.profile,
 			options: props.options,
 		});
-		const violations = await props.scenario(environment);
+		const violations = await props.scenario(environment).catch((cause: unknown) => {
+			throw new Error(
+				[
+					`Chaos scenario failed: ${describeFailure(cause)}`,
+					`Replay with CHAOS_SEED=${seed} (profile "${props.profile.name}").`,
+					"Requests, in the order they were answered:",
+					...environment.cluster.trace.map((line) => `  ${line}`),
+				].join("\n"),
+				{ cause },
+			);
+		});
 		const statistics = environment.cluster.statistics();
 		totals.runs += 1;
 		totals.requests += statistics.requests;

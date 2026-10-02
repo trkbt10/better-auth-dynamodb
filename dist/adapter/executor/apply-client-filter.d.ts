@@ -8,4 +8,3 @@ export declare const applyClientFilter: (props: {
     where?: NormalizedWhere[] | undefined;
     requiresClientFilter: boolean;
 }) => DynamoDBItem[];
-//# sourceMappingURL=apply-client-filter.d.ts.map

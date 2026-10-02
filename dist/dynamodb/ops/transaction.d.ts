@@ -95,4 +95,3 @@ export declare const executeTransaction: (props: {
     state: DynamoDBTransactionState;
 }) => Promise<void>;
 export {};
-//# sourceMappingURL=transaction.d.ts.map

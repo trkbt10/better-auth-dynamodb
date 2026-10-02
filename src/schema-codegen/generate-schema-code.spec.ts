@@ -28,6 +28,8 @@ describe("generateSchemaCode", () => {
 		expect(code).toContain("import { DynamoDBClient }");
 		expect(code).toContain("import { applyTableSchemas }");
 		expect(code).toContain("import type { TableSchema }");
+		expect(code).toContain('from "@trkbt10/better-auth-dynamodb"');
+		expect(code).not.toContain('from "better-auth-dynamodb"');
 		expect(code).toContain("const tableSchemas: TableSchema[]");
 		expect(code).toContain("await applyTableSchemas");
 	});

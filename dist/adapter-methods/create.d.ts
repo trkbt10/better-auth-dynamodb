@@ -14,4 +14,3 @@ export declare const createCreateMethod: (client: AdapterClientContainer, option
     model: string;
     data: T;
 }) => Promise<T>;
-//# sourceMappingURL=create.d.ts.map

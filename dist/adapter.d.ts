@@ -83,7 +83,8 @@ export type ResolvedDynamoDBAdapterConfig = {
      * Set per adapter instance, once the schema is known.
      */
     resolveIndexKeyAttributes?: ((model: string) => string[]) | undefined;
+    /** Database counter collision recovery requires strongly consistent PK reads. */
+    requiresConsistentRead?: ((model: string) => boolean) | undefined;
 };
 export declare const dynamodbAdapter: (config: DynamoDBAdapterConfig) => (options: BetterAuthOptions) => DBAdapter<BetterAuthOptions>;
 export {};
-//# sourceMappingURL=adapter.d.ts.map

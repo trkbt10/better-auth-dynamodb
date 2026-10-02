@@ -66,8 +66,8 @@ export const generateSchemaCode = (props: {
  *   npx ts-node ${fileName}
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { applyTableSchemas } from "better-auth-dynamodb";
-import type { TableSchema } from "better-auth-dynamodb";
+import { applyTableSchemas } from "@trkbt10/better-auth-dynamodb";
+import type { TableSchema } from "@trkbt10/better-auth-dynamodb";
 
 const tableSchemas: TableSchema[] = ${schemasJson};
 

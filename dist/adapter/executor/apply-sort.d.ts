@@ -8,4 +8,3 @@ export declare const applySort: <T extends Record<string, unknown>>(items: T[], 
         direction: "asc" | "desc";
     } | undefined;
 }) => T[];
-//# sourceMappingURL=apply-sort.d.ts.map

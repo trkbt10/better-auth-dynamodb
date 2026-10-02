@@ -14,11 +14,11 @@ import {
 	CHAOS_PROFILES,
 	describeFailure,
 	expectChaosHappened,
-	resolveSeeds,
 	runChaos,
 	type ChaosEnvironment,
 	type ChaosProfile,
 } from "./chaos-harness";
+import { resolveChaosSeeds } from "./chaos-seeds";
 
 const BASE_OPTIONS = {
 	secret: "test-secret-at-least-32-characters-long!!",
@@ -33,11 +33,11 @@ const BASE_OPTIONS = {
  * of `CHAOS_SEED`.
  */
 const resolveFlowSeeds = (): number[] => {
-	if (process.env.CHAOS_SEED !== undefined && process.env.CHAOS_SEED !== "") {
-		return resolveSeeds();
-	}
-	const runs = Number(process.env.CHAOS_FLOW_RUNS ?? "6");
-	return Array.from({ length: runs }, (_, index) => index + 1);
+	return resolveChaosSeeds({
+		seed: process.env.CHAOS_SEED,
+		runs: process.env.CHAOS_FLOW_RUNS,
+		defaultRuns: 6,
+	});
 };
 
 // Whether the profile can make an operation fail: a rejected request, a lost
@@ -135,11 +135,18 @@ const RATE_LIMIT_OPTIONS = {
 } satisfies BetterAuthOptions;
 
 const rateLimitScenario =
-	(profile: ChaosProfile) =>
+	(profile: ChaosProfile, expired: boolean) =>
 	async (environment: ChaosEnvironment): Promise<string[]> => {
 		const { cluster } = environment;
 		const auth = betterAuth({ ...RATE_LIMIT_OPTIONS, database: environment.createDatabase() });
 		const table = environment.tableName("rateLimit");
+		if (expired) {
+			await environment.createAdapter().create({
+				model: "rateLimit",
+				data: { key: "203.0.113.50|/ok", count: RATE_LIMIT_MAX, lastRequest: Date.now() - 1200000 },
+			});
+			cluster.settle();
+		}
 		const request = async (): Promise<number> => {
 			const response = await auth.handler(
 				new Request("http://localhost:3000/api/auth/ok", {
@@ -149,19 +156,14 @@ const rateLimitScenario =
 			return response.status;
 		};
 
-		// The first request creates the counter. Better Auth leaves it to a
-		// unique constraint to keep concurrent first requests from creating
-		// several; DynamoDB has none on a non-key attribute, so the burst
-		// starts from an existing counter.
-		const first = await request();
-		cluster.settle();
-
+		// Start without a counter: conditional creation must admit at most one
+		// first writer, including when an index has not observed any writes.
 		const burst = RATE_LIMIT_MAX + 2 + cluster.random.int(5);
 		const results = await cluster.run(Array.from({ length: burst }, () => () => request()));
 
 		const violations: string[] = [];
-		if (first !== 200) {
-			violations.push(`the first request was answered with ${first}`);
+		if ((cluster.store.get(table)?.length ?? 0) > 1) {
+			violations.push("more than one counter was created for the same key");
 		}
 		cluster.writes
 			.filter((write) => write.tableName === table)
@@ -178,11 +180,11 @@ const rateLimitScenario =
 		});
 		const statuses = results.map((result) => (result.status === "fulfilled" ? result.value : 0));
 		const admitted = statuses.filter((status) => status === 200).length;
-		if (admitted > RATE_LIMIT_MAX - 1) {
-			violations.push(`${admitted + 1} requests were admitted, the limit is ${RATE_LIMIT_MAX}`);
+		if (admitted > RATE_LIMIT_MAX) {
+			violations.push(`${admitted} requests were admitted, the limit is ${RATE_LIMIT_MAX}`);
 		}
-		if (!injectsFailures(profile) && admitted !== RATE_LIMIT_MAX - 1) {
-			violations.push(`${admitted + 1} requests were admitted although nothing failed: ${statuses.join()}`);
+		if (!injectsFailures(profile) && admitted !== RATE_LIMIT_MAX) {
+			violations.push(`${admitted} requests were admitted although nothing failed: ${statuses.join()}`);
 		}
 		return violations;
 	};
@@ -204,16 +206,24 @@ for (const transaction of [false, true]) {
 	});
 }
 
-describe("chaos: a database rate limit admits at most its maximum", () => {
+for (const expired of [false, true]) {
+describe(`chaos: a database rate limit admits at most its maximum (expired: ${expired})`, () => {
 	for (const profile of CHAOS_PROFILES) {
 		test(profile.name, async () => {
 			const totals = await runChaos({
 				profile,
-				scenario: rateLimitScenario(profile),
+				scenario: rateLimitScenario(profile, expired),
 				options: RATE_LIMIT_OPTIONS,
 				seeds: resolveFlowSeeds(),
 			});
-			expect(expectChaosHappened(profile, { ...totals, runs: 10 * totals.runs })).toEqual([]);
+			// Counter lookups now use strong PK reads, so injecting replica lag
+			// must not make these reads stale. Other scenarios exercise stale GSIs.
+			if (!expired) {
+				expect(totals.staleReads).toBe(0);
+			}
+			const applicableFaults = { ...profile, faults: { ...profile.faults, staleReadRate: 0 } };
+			expect(expectChaosHappened(applicableFaults, { ...totals, runs: 10 * totals.runs })).toEqual([]);
 		}, 120000);
 	}
 });
+}

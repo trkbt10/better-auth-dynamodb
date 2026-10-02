@@ -15,4 +15,3 @@ export type ApplyTableSchemasResult = {
 };
 export declare const applyTableSchemas: (options: ApplyTableSchemasOptions) => Promise<ApplyTableSchemasResult>;
 export {};
-//# sourceMappingURL=apply-table-schemas.d.ts.map

@@ -8,4 +8,3 @@ export declare const applyWhereFilters: (props: {
     items: DynamoDBItem[];
     where?: NormalizedWhere[] | undefined;
 }) => DynamoDBItem[];
-//# sourceMappingURL=where-evaluator.d.ts.map

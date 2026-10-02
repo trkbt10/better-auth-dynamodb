@@ -24,4 +24,3 @@ export declare const generateSchemaCode: (props: {
     tableNamePrefix?: string;
     schemaOptions?: GenerateTableSchemasOptions;
 }) => string;
-//# sourceMappingURL=generate-schema-code.d.ts.map

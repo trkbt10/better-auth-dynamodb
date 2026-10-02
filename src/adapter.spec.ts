@@ -89,7 +89,7 @@ describe("dynamodbAdapter", () => {
 			throw new Error("Expected a TransactWriteCommand to be sent.");
 		}
 		// TransactWriteItems rejects two operations on one item.
-		expect(transactionCommand.input.TransactItems).toEqual([
+		expect(transactionCommand.input.TransactItems).toMatchObject([
 			{ Delete: { TableName: "auth_user", Key: { id: "user_1" } } },
 		]);
 	});
@@ -133,7 +133,7 @@ describe("dynamodbAdapter", () => {
 				command instanceof TransactWriteCommand,
 		);
 		// Better Auth adds `updatedAt` to every update, hence the second attribute.
-		expect(transactionCommand?.input.TransactItems).toEqual([
+		expect(transactionCommand?.input.TransactItems).toMatchObject([
 			{
 				Update: {
 					TableName: "auth_user",

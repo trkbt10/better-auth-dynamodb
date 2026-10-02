@@ -20,4 +20,3 @@ export declare const executeJoin: (props: {
     operationStats?: DynamoDBOperationStatsCollector | undefined;
     transactionState?: DynamoDBTransactionState | undefined;
 }) => Promise<DynamoDBItem[]>;
-//# sourceMappingURL=execute-join.d.ts.map

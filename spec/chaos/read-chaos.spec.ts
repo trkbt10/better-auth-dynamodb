@@ -10,6 +10,7 @@ import {
 	CHAOS_PROFILES,
 	describeFailure,
 	expectChaosHappened,
+	resolveSeeds,
 	runChaos,
 	type ChaosEnvironment,
 } from "./chaos-harness";
@@ -183,6 +184,6 @@ describe("chaos: reads of unchanged rows are exact", () => {
 				missing.push(`profile "${profile.name}" never produced partial batches`);
 			}
 			expect(missing).toEqual([]);
-		});
+		}, Math.max(30000, resolveSeeds().length * 500));
 	}
 });

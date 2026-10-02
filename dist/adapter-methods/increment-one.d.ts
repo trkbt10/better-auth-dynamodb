@@ -16,4 +16,3 @@ export declare const createIncrementOneMethod: (client: AdapterClientContainer, 
     increment: Record<string, number>;
     set?: Record<string, unknown> | undefined;
 }) => Promise<T | null>;
-//# sourceMappingURL=increment-one.d.ts.map

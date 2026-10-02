@@ -17,4 +17,3 @@ export declare const createFindOneMethod: (client: AdapterClientContainer, optio
     join?: JoinConfig | undefined;
 }) => Promise<T | null>;
 export {};
-//# sourceMappingURL=find-one.d.ts.map

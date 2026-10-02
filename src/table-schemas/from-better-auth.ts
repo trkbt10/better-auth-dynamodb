@@ -14,7 +14,7 @@
  * ```typescript
  * import { betterAuth } from "better-auth";
  * import { twoFactor, organization } from "better-auth/plugins";
- * import { generateTableSchemas, createIndexResolversFromSchemas } from "better-auth-dynamodb";
+ * import { generateTableSchemas, createIndexResolversFromSchemas } from "@trkbt10/better-auth-dynamodb";
  *
  * // Generate schemas matching your Better Auth config
  * const schemas = generateTableSchemas({

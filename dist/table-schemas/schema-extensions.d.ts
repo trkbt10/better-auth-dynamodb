@@ -38,4 +38,3 @@ export type SchemaExtensions = Record<string, TableExtension>;
  * proper GSI generation for efficient queries.
  */
 export declare const defaultSchemaExtensions: SchemaExtensions;
-//# sourceMappingURL=schema-extensions.d.ts.map

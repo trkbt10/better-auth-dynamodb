@@ -11,4 +11,3 @@ export declare const applySelect: <T extends Record<string, unknown>>(props: {
         field: string;
     }) => string;
 }) => T[];
-//# sourceMappingURL=apply-select.d.ts.map

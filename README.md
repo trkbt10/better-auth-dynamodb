@@ -6,8 +6,8 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-Unlicense-purple?style=flat-square)](./UNLICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Better Auth](https://img.shields.io/badge/Better_Auth-1.0+-FF6B6B?style=flat-square)](https://www.better-auth.com/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.14+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Better Auth](https://img.shields.io/badge/Better_Auth-1.7.6+-FF6B6B?style=flat-square)](https://www.better-auth.com/)
 [![AWS DynamoDB](https://img.shields.io/badge/AWS-DynamoDB-FF9900?style=flat-square&logo=amazondynamodb&logoColor=white)](https://aws.amazon.com/dynamodb/)
 
 </div>
@@ -26,36 +26,32 @@
 
 | Requirement  | Version                                                    |
 | ------------ | ---------------------------------------------------------- |
-| Node.js      | 18+                                                        |
+| Node.js      | 22.14+                                                        |
 | AWS DynamoDB | Local or Cloud                                             |
 | AWS SDK      | v3                                                         |
-| Better Auth  | 1.x — the test suite runs against 1.7 (see Local Development) |
+| Better Auth  | 1.7.6+ (within 1.x) |
 
 ## 📦 Installation
 
 ```bash
 # npm
-npm install github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+npm install @trkbt10/better-auth-dynamodb better-auth @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 
 # yarn
-yarn add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+yarn add @trkbt10/better-auth-dynamodb better-auth @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 
 # pnpm
-pnpm add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+pnpm add @trkbt10/better-auth-dynamodb better-auth @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 
 # bun
-bun add github:trkbt10/better-auth-dynamodb @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+bun add @trkbt10/better-auth-dynamodb better-auth @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 ```
 
 <details>
-<summary>📌 Install specific version or branch</summary>
+<summary>📌 Install a specific version</summary>
 
 ```bash
-# specific tag/release
-npm install github:trkbt10/better-auth-dynamodb#v0.2.0
-
-# specific branch
-npm install github:trkbt10/better-auth-dynamodb#main
+bun add @trkbt10/better-auth-dynamodb@0.3.0
 ```
 
 </details>
@@ -68,7 +64,7 @@ npm install github:trkbt10/better-auth-dynamodb#main
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { betterAuth } from "better-auth";
-import { coreTableSchemas, createIndexResolversFromSchemas, dynamodbAdapter } from "better-auth-dynamodb";
+import { coreTableSchemas, createIndexResolversFromSchemas, dynamodbAdapter } from "@trkbt10/better-auth-dynamodb";
 
 // 1. Create DynamoDB client
 const client = new DynamoDBClient({ region: "us-east-1" });
@@ -104,7 +100,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { betterAuth } from "better-auth";
 import { twoFactor, organization } from "better-auth/plugins";
-import { createIndexResolversFromSchemas, dynamodbAdapter, generateTableSchemas } from "better-auth-dynamodb";
+import { createIndexResolversFromSchemas, dynamodbAdapter, generateTableSchemas } from "@trkbt10/better-auth-dynamodb";
 
 // 1. Define your Better Auth config (used for both schema generation and auth setup)
 const plugins = [twoFactor(), organization()];
@@ -146,7 +142,7 @@ Before using the adapter, create the required DynamoDB tables.
 
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { applyTableSchemas, coreTableSchemas } from "better-auth-dynamodb";
+import { applyTableSchemas, coreTableSchemas } from "@trkbt10/better-auth-dynamodb";
 
 const client = new DynamoDBClient({ region: "us-east-1" });
 
@@ -164,7 +160,7 @@ await applyTableSchemas({ client, tables });
 ```ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { twoFactor, organization } from "better-auth/plugins";
-import { applyTableSchemas, generateTableSchemas } from "better-auth-dynamodb";
+import { applyTableSchemas, generateTableSchemas } from "@trkbt10/better-auth-dynamodb";
 
 const client = new DynamoDBClient({ region: "us-east-1" });
 
@@ -427,7 +423,7 @@ Options for `generateTableSchemas()`:
 <summary>📘 Custom Composite Indexes Example</summary>
 
 ```ts
-import { generateTableSchemas } from "better-auth-dynamodb";
+import { generateTableSchemas } from "@trkbt10/better-auth-dynamodb";
 
 const schemas = generateTableSchemas(
   { plugins: [...] },
@@ -493,8 +489,12 @@ Better Auth 1.6 and later consumes single-use rows (verification tokens, device 
 - `create` fails with `DUPLICATE_PRIMARY_KEY` when the primary key is already taken (`PutItem` with `attribute_not_exists`). It never replaces a row. Better Auth relies on this to make a deterministic id a first-writer-wins gate.
 - `update` only changes a row that still exists (`attribute_exists`). If the row was deleted after it was read, the update affects nothing instead of creating a partial row.
 - `update` assigns the given attributes, each as a whole value: a number is set, not advanced, and a list or JSON field is replaced, not merged. Use `incrementOne` for counters.
-- `deleteMany` returns the number of rows it actually deleted.
+- `delete` and `deleteMany` re-check the where clause inside each conditional delete, so an expired-row cleanup cannot remove a counter another request has reset. `deleteMany` returns the number of rows it actually deleted.
 - Uniqueness of a field other than `id` is not enforced: DynamoDB has no unique constraint on non-key attributes.
+
+When Better Auth explicitly configures `rateLimit.storage: "database"`, rate-limit IDs use `rate-limit:<SHA-256(key)>` instead of the general ID generator. Conditional creation then permits one counter per key, including simultaneous first requests. Equality lookups on the key also pin that primary key; counter PK queries use strongly consistent reads, while GSI queries remain eventually consistent. Rate-limit `key` and `id` are immutable; other fields can be updated normally. Custom model and field names and `usePlural` are supported. This counter-specific behavior does not add uniqueness constraints to other models.
+
+For an existing deployment, stop traffic while replacing old random-ID rate-limit rows before enabling this version; they are not merged into the new deterministic counters. Deploying onto a new empty rate-limit table needs no migration.
 
 ### Transactions
 
@@ -530,6 +530,7 @@ With `tableNamePrefix`, a table is named `prefix + modelName`, where `modelName`
 | Default composite indexes also apply to models with a custom `modelName` | You set a custom `modelName` for `session`, `account` or `verification` and use `generateTableSchemas` | Re-run `applyTableSchemas` (or deploy the regenerated schema) so the indexes exist before the adapter queries them |
 | Index resolvers are asked with the schema model name (`user`), also with `usePlural` | You use `usePlural` with hand-written resolvers keyed by the plural name (`users`) | Key the resolvers by the schema model name |
 | A custom-named `session` gets the composite indexes instead of the single-field `<name>_userId_idx` / `<name>_token_idx` | Same as above | The old single-field indexes are no longer used; `applyTableSchemas` does not delete them, remove them yourself |
+| Database rate-limit IDs derive from `key`, and key/id are immutable | You have existing random-ID counter rows | Stop traffic while clearing/replacing the old rate-limit rows; counters restart with deterministic IDs |
 | `create` rejects a primary key that is taken | Code relied on `create` replacing a row with the same `id` | Use `update` |
 | `update` assigns the given attributes as whole values | Code advanced a counter with `update({ count: count + 1 })` and relied on concurrent calls adding up, or relied on list / JSON fields being merged | Use `incrementOne` for counters (Better Auth 1.6+ does) |
 | `findMany` applies `select` | Code read fields it did not select | Select them |
@@ -605,7 +606,7 @@ Tests use DynamoDB Local by default.
 
 ```bash
 # Start DynamoDB Local (via Docker)
-docker run -p 8000:8000 amazon/dynamodb-local
+docker run --rm -p 8000:8000 amazon/dynamodb-local:3.3.1
 
 # ... or without Docker, from the DynamoDB Local download (needs Java 17+)
 java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar -inMemory -port 8000
@@ -632,31 +633,104 @@ DynamoDB Local answers every read from the latest write, in the order the reques
 | Short pages | A Query / Scan page ends after one or two evaluated items, so the rest has to be fetched through `LastEvaluatedKey` |
 | Partial batches | A `BatchGetItem` hands some of its keys back as `UnprocessedKeys` |
 
-Every decision is drawn from a seed. Each scenario runs concurrent callers under nine fault profiles (from interleaving alone to everything at once) and checks, for every write the cluster applied, the invariants the adapter promises:
+Every decision is drawn from a seed. Each scenario runs concurrent callers under thirteen fault profiles (from interleaving alone to everything at once) and checks, for every write the cluster applied, the invariants the adapter promises:
 
 - a single-use row is handed out at most once, and only while it matches the where clause;
 - a guarded counter moves by exactly the requested delta and never past its guard;
 - a create never replaces a row; an update never resurrects one or changes what it did not assign; list and JSON values are written whole;
 - a transaction is applied in full or not at all, reads its own writes, and takes a fixed id at most once;
 - a read of rows nobody changes is exact: every row once, in the requested order;
-- through Better Auth: a reset token changes the password at most once, and a database rate limit admits at most `max`.
+- through Better Auth: a reset token changes the password at most once, and a database rate limit admits at most `max`, including a concurrent burst against an empty counter table and after its window expires.
 
-What the specs do not assert is freshness: a row written a moment ago may be missing from an index read, on the simulated cluster as on DynamoDB. The specs for the tooling itself (`spec/chaos/chaos-cluster.spec.ts`) check that each fault really happens, and every profile fails its run if the faults it names were never injected.
+What the specs do not assert is freshness: a row written a moment ago may be missing from an index read, on the simulated cluster as on DynamoDB. The specs for the tooling itself (`spec/chaos/chaos-cluster.spec.ts`) check that each fault really happens, and every profile fails its run if applicable faults were never injected. Rate-limit flows explicitly assert zero stale reads because they use strong primary-key reads; other scenarios exercise replica lag.
 
 ```bash
 # part of `bun run test` (40 seeds per profile; needs no DynamoDB Local)
-bunx vitest --run spec/chaos
+bun run test:chaos
 
 # more seeds (CHAOS_FLOW_RUNS for the Better Auth flows, which hash passwords)
-CHAOS_RUNS=1000 CHAOS_FLOW_RUNS=60 bunx vitest --run spec/chaos --testTimeout=600000
+bun run test:chaos:stress
 
 # replay the seed a failure reported
-CHAOS_SEED=1234 bunx vitest --run spec/chaos
+CHAOS_SEED=1234 bun run test:chaos
 ```
 
-A failing run prints its seed, the broken invariants and the requests in the order they were answered.
+A failing run prints its seed, the broken invariants and the requests in the order they were answered. Unexpected exceptions also include this replay context. Zero or invalid run counts throw instead of silently skipping verification; a seed must fit in an unsigned 32-bit integer.
+
+The four additional boundary profiles force every eventual read to lag, replay every lost write response, keep every batch partially unprocessed with tiny pages, or combine 60% throttling with 60% transaction conflicts. `chaos.yml` runs the stress suite weekly and on manual dispatch, retains a JSON report for fourteen days, and verifies 120,120 seeded scenarios per run (plus the standalone cold-start regression): nine adapter scenarios × thirteen profiles × 1,000 seeds, plus four Better Auth flows × thirteen profiles × sixty seeds.
 
 ## 📄 License
 
 This is free and unencumbered software released into the public domain.
 See [UNLICENSE](./UNLICENSE) for details.
+
+## npm Publishing
+
+The npm package is `@trkbt10/better-auth-dynamodb`. GitHub Actions checks Node.js
+22.14 and 24 with Bun pinned by `packageManager`. Every PR, push to `main`, and
+release runs lint (including warnings), typecheck, dependency audit, all tests
+against DynamoDB Local 3.3.1, and coverage thresholds of 80%. The package check
+builds and packs the library, installs that tarball into a temporary consumer,
+and verifies Node ESM/CommonJS exports and TypeScript NodeNext resolution with
+`skipLibCheck: false`. The Node consumer loads `bun-types/sqlite` because Better Auth's public types
+also reference `bun:sqlite`; it does not load Bun's unrelated Node global overrides. `publint --strict` checks package metadata.
+
+### Initial npm setup
+
+1. Use an npm account with publish access to the `@trkbt10` scope. The first
+   publication creates the package; until then, npm has no package settings in
+   which to register a trusted publisher. Run the checks and publish once locally:
+
+   ```bash
+   bun install --frozen-lockfile
+   bun run lint
+   bun run typecheck
+   bun audit
+   # Start DynamoDB Local as described above before running the tests.
+   bun run test:cov
+   bun run test:package
+   bun run lint:package
+   npm login
+   npm publish artifacts/package.tgz --access public
+   ```
+
+2. With npm CLI 11.15 or later and account 2FA enabled, register the trusted
+   publisher from the command line (this may request browser authentication):
+
+   ```bash
+   npm trust github @trkbt10/better-auth-dynamodb --repo trkbt10/better-auth-dynamodb --file publish.yml --env npm --allow-publish --yes
+   ```
+
+   Alternatively, use the package's Settings → Trusted publishing with these values:
+
+   | Field | Value |
+   | --- | --- |
+   | Organization or user | `trkbt10` |
+   | Repository | `better-auth-dynamodb` |
+   | Workflow filename | `publish.yml` |
+   | Environment name | `npm` |
+   | Allowed actions | Enable direct publishing with `npm publish` |
+
+   The workflow grants `id-token: write` and uses npm CLI from Node.js 24 for
+   [trusted publishing](https://docs.npmjs.com/trusted-publishers/). Dependency
+   installation, building, testing, and packing use Bun. No `NPM_TOKEN` secret is
+   required. GitHub creates the `npm` environment when the workflow first uses it;
+   any environment protections you configure apply to the publish job.
+
+### Subsequent releases
+
+1. Update `package.json`'s version, update `bun.lock` with
+   `bun install --lockfile-only`, and merge the changes into `main`.
+2. Create and publish a GitHub Release whose tag exactly matches the version,
+   for example `v0.3.1` for version `0.3.1`. The release commit must belong to
+   `main`. Use the next version after the initial local publication.
+3. `publish.yml` reruns the complete CI checks, then publishes the exact tested
+   tarball from the Node.js 24 job with provenance. A stable release goes to
+   `latest`; a version such as `0.4.0-beta.1` must be marked as a GitHub prerelease
+   and goes to `next`. Draft releases and tag pushes alone do not publish.
+
+For local package validation, `bun run test:package` leaves the reviewed tarball
+at `artifacts/package.tgz` and removes its temporary consumer. The tarball contains
+only the ESM/CommonJS bundles, their bundled declarations, package metadata,
+README, and license. Coverage reports and package tarballs are retained as CI
+artifacts for seven days. Dependabot checks dependencies and Actions weekly.

@@ -8,6 +8,7 @@ export type DynamoDBQueryOptions = {
     documentClient: DynamoDBDocumentClient;
     tableName: string;
     indexName?: string | undefined;
+    consistentRead?: boolean | undefined;
     keyConditionExpression: string;
     filterExpression: string | undefined;
     expressionAttributeNames: Record<string, string>;
@@ -19,4 +20,3 @@ export type DynamoDBQueryOptions = {
 };
 export declare const queryItems: (options: DynamoDBQueryOptions) => Promise<Record<string, NativeAttributeValue>[]>;
 export declare const queryCount: (options: Omit<DynamoDBQueryOptions, "limit">) => Promise<number>;
-//# sourceMappingURL=query.d.ts.map

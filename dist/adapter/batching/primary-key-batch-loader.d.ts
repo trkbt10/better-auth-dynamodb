@@ -19,4 +19,3 @@ export declare const createPrimaryKeyBatchLoader: (props: {
     }) => string;
     getDefaultModelName: (model: string) => string;
 }) => PrimaryKeyBatchLoader;
-//# sourceMappingURL=primary-key-batch-loader.d.ts.map

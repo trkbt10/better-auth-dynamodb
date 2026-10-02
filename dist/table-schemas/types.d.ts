@@ -42,4 +42,3 @@ export type GenerateTableSchemasOptions = {
      */
     schemaExtensions?: SchemaExtensions;
 };
-//# sourceMappingURL=types.d.ts.map

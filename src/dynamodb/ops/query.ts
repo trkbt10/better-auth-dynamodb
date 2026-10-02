@@ -16,6 +16,7 @@ export type DynamoDBQueryOptions = {
 	documentClient: DynamoDBDocumentClient;
 	tableName: string;
 	indexName?: string | undefined;
+	consistentRead?: boolean | undefined;
 	keyConditionExpression: string;
 	filterExpression: string | undefined;
 	expressionAttributeNames: Record<string, string>;
@@ -47,6 +48,10 @@ export const queryItems = async (
 
 			if (options.indexName) {
 				commandInput.IndexName = options.indexName;
+			} else if (options.consistentRead) {
+				// A PK lookup is also the read-after-collision path for a unique
+				// rate-limit counter. GSI queries cannot request strong reads.
+				commandInput.ConsistentRead = true;
 			}
 
 			applyExpressionAttributes(commandInput, {
@@ -121,6 +126,8 @@ export const queryCount = async (
 
 			if (options.indexName) {
 				commandInput.IndexName = options.indexName;
+			} else if (options.consistentRead) {
+				commandInput.ConsistentRead = true;
 			}
 
 			applyExpressionAttributes(commandInput, {

@@ -36,4 +36,3 @@ export declare const omitNullIndexKeys: <T extends Record<string, unknown>>(row:
  */
 export declare const restoreNullIndexKeys: (row: Row, indexKeyAttributes: string[], only?: string[] | undefined) => Row;
 export {};
-//# sourceMappingURL=index-key-attributes.d.ts.map

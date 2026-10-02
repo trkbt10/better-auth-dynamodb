@@ -32,4 +32,3 @@ export declare const createUpdateManyMethod: (client: AdapterClientContainer, op
     update: Record<string, unknown>;
 }) => Promise<number>;
 export {};
-//# sourceMappingURL=update-many.d.ts.map

@@ -28,6 +28,7 @@ import { createIncrementOneMethod } from "./adapter-methods/increment-one";
 import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { createPrimaryKeyBatchLoader } from "./adapter/batching/primary-key-batch-loader";
+import { createRateLimitKeyMapping } from "./adapter/rate-limit-key-mapping";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
 import {
   createIndexKeyAttributeResolver,
@@ -127,6 +128,8 @@ export type ResolvedDynamoDBAdapterConfig = {
    * Set per adapter instance, once the schema is known.
    */
   resolveIndexKeyAttributes?: ((model: string) => string[]) | undefined;
+  /** Database counter collision recovery requires strongly consistent PK reads. */
+  requiresConsistentRead?: ((model: string) => boolean) | undefined;
 };
 
 const ensureDocumentClient = (documentClient: DynamoDBDocumentClient | undefined): DynamoDBDocumentClient => {
@@ -143,7 +146,8 @@ const createDynamoDbCustomizer = (props: {
 }): AdapterFactoryCustomizeAdapterCreator => {
   const { documentClient, transactionState } = props;
 
-  return ({ getFieldName, getDefaultModelName, schema }) => {
+  return ({ options, getFieldName, getDefaultModelName, schema }) => {
+    const rateLimitKeys = createRateLimitKeyMapping({ options, getFieldName, getDefaultModelName });
     // Better Auth hands the adapter the physical model name, which `usePlural`
     // turns into `users`. Tables and indexes are named after the model name of
     // the schema (`user`, or a custom `modelName`), so that is the name the
@@ -174,6 +178,7 @@ const createDynamoDbCustomizer = (props: {
       indexKeySchemaResolver,
       resolveSchemaModelName: (defaultModelName) => schema[defaultModelName]?.modelName,
       resolveIndexKeyAttributes,
+      requiresConsistentRead: rateLimitKeys.applies,
     };
     // An index key attribute cannot hold NULL, so a null field is stored as a
     // missing attribute. Rows handed back report it as null again.
@@ -237,27 +242,40 @@ const createDynamoDbCustomizer = (props: {
     const update = createUpdateMethod(adapterClient, updateOptions);
     const consumeOne = createConsumeOneMethod(adapterClient, atomicOptions);
     const incrementOne = createIncrementOneMethod(adapterClient, atomicOptions);
+    const create = createCreateMethod(adapterClient, createOptions);
+    const count = createCountMethod(adapterClient, countOptions);
+    const updateMany = createUpdateManyMethod(adapterClient, updateOptions);
+    const deleteOne = createDeleteMethod(adapterClient, deleteOptions);
+    const deleteMany = createDeleteManyMethod(adapterClient, deleteOptions);
 
     return {
-      create: createCreateMethod(adapterClient, createOptions),
+      create: async <T extends Record<string, unknown>>(input: { model: string; data: T }) =>
+        create(rateLimitKeys.create(input)),
       findOne: async <T>(input: Parameters<typeof findOne>[0]) =>
-        restoreResult(await findOne<T>(input), input),
+        restoreResult(await findOne<T>(rateLimitKeys.where(input)), input),
       findMany: async <T>(input: Parameters<typeof findMany>[0]) =>
-        (await findMany<T>(input)).map((row) => restoreResult(row, input)),
-      count: createCountMethod(adapterClient, countOptions),
-      update: async <T>(input: Parameters<typeof update>[0]) =>
-        restoreResult((await update(input)) as T | null, input),
-      updateMany: createUpdateManyMethod(adapterClient, updateOptions),
-      delete: createDeleteMethod(adapterClient, deleteOptions),
-      deleteMany: createDeleteManyMethod(adapterClient, deleteOptions),
+        (await findMany<T>(rateLimitKeys.where(input))).map((row) => restoreResult(row, input)),
+      count: async (input: Parameters<typeof count>[0]) => count(rateLimitKeys.where(input)),
+      update: async <T>(input: Parameters<typeof update>[0]) => {
+        rateLimitKeys.assertMutable(input.model, input.update);
+        return restoreResult((await update(rateLimitKeys.where(input))) as T | null, input);
+      },
+      updateMany: async (input: Parameters<typeof updateMany>[0]) => {
+        rateLimitKeys.assertMutable(input.model, input.update);
+        return updateMany(rateLimitKeys.where(input));
+      },
+      delete: async (input: Parameters<typeof deleteOne>[0]) => deleteOne(rateLimitKeys.where(input)),
+      deleteMany: async (input: Parameters<typeof deleteMany>[0]) => deleteMany(rateLimitKeys.where(input)),
       // Better Auth >= 1.6 consumes single-use rows and mutates guarded counters
       // through these two methods. Its fallback for adapters without them is a
       // snapshot-guarded deleteMany / updateMany, which cannot be atomic here:
       // DynamoDB only makes a write conditional inside the keyed request itself.
       consumeOne: async <T>(input: Parameters<typeof consumeOne>[0]) =>
-        restoreResult(await consumeOne<T>(input), input),
-      incrementOne: async <T>(input: Parameters<typeof incrementOne>[0]) =>
-        restoreResult(await incrementOne<T>(input), input),
+        restoreResult(await consumeOne<T>(rateLimitKeys.where(input)), input),
+      incrementOne: async <T>(input: Parameters<typeof incrementOne>[0]) => {
+        rateLimitKeys.assertMutable(input.model, { ...input.increment, ...input.set });
+        return restoreResult(await incrementOne<T>(rateLimitKeys.where(input)), input);
+      },
       createSchema: async (props: {
         file?: string;
         tables: BetterAuthDBSchema;

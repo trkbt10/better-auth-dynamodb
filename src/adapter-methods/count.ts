@@ -153,6 +153,7 @@ export const createCountMethod = (
 					documentClient,
 					tableName,
 					indexName: keyCondition.indexName,
+					consistentRead: adapterConfig.requiresConsistentRead?.(model),
 					keyConditionExpression: keyCondition.keyConditionExpression,
 					filterExpression: filter.filterExpression,
 				expressionAttributeNames: {

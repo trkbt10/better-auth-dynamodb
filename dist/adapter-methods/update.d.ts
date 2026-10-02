@@ -9,4 +9,3 @@ export declare const createUpdateMethod: (client: AdapterClientContainer, option
     where: Where[];
     update: T;
 }) => Promise<T | null>;
-//# sourceMappingURL=update.d.ts.map
