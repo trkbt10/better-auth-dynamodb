@@ -144,14 +144,34 @@ const createDynamoDbCustomizer = (props: {
   const { documentClient, transactionState } = props;
 
   return ({ getFieldName, getDefaultModelName, schema }) => {
+    // Better Auth hands the adapter the physical model name, which `usePlural`
+    // turns into `users`. Tables and indexes are named after the model name of
+    // the schema (`user`, or a custom `modelName`), so that is the name the
+    // index resolvers are asked with.
+    const toSchemaModelName = (model: string): string => {
+      const defaultModelName = getDefaultModelName(model);
+      return schema[defaultModelName]?.modelName ?? defaultModelName;
+    };
+    const indexNameResolver: ResolvedDynamoDBAdapterConfig["indexNameResolver"] = (args) =>
+      props.adapterConfig.indexNameResolver({ ...args, model: toSchemaModelName(args.model) });
+    const resolveIndexKeySchema = props.adapterConfig.indexKeySchemaResolver;
+    const createIndexKeySchemaResolver = (): ResolvedDynamoDBAdapterConfig["indexKeySchemaResolver"] => {
+      if (!resolveIndexKeySchema) {
+        return undefined;
+      }
+      return (args) => resolveIndexKeySchema({ ...args, model: toSchemaModelName(args.model) });
+    };
+    const indexKeySchemaResolver = createIndexKeySchemaResolver();
     const resolveIndexKeyAttributes = createIndexKeyAttributeResolver({
       schema,
       getDefaultModelName,
-      indexNameResolver: props.adapterConfig.indexNameResolver,
-      indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
+      indexNameResolver,
+      indexKeySchemaResolver,
     });
     const adapterConfig: ResolvedDynamoDBAdapterConfig = {
       ...props.adapterConfig,
+      indexNameResolver,
+      indexKeySchemaResolver,
       resolveSchemaModelName: (defaultModelName) => schema[defaultModelName]?.modelName,
       resolveIndexKeyAttributes,
     };
