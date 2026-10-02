@@ -207,10 +207,81 @@ describe("createConsumeOneMethod", () => {
 		expect(sendCalls.some((call) => call instanceof QueryCommand)).toBe(false);
 	});
 
-	test("retries with a fresh read after a failed condition, then gives up with an error", async () => {
+	test("skips a candidate that a consistent read shows to be gone", async () => {
+		// The scan keeps returning the row: a read that lags behind the delete.
 		const { consumeOne, sendCalls } = createMethod(async (command) => {
 			if (command instanceof ScanCommand) {
 				return { Items: [{ id: "v9", identifier: "token" }] };
+			}
+			if (command instanceof GetCommand) {
+				return {};
+			}
+			throw conditionalCheckFailure();
+		});
+
+		const consumed = await consumeOne({
+			model: "verification",
+			where: [{ field: "identifier", value: "token" }],
+		});
+
+		expect(consumed).toBeNull();
+		expect(sendCalls.map((call) => call?.constructor.name)).toEqual([
+			"ScanCommand",
+			"DeleteCommand",
+			"GetCommand",
+			"ScanCommand",
+		]);
+		const read = sendCalls[2];
+		if (read instanceof GetCommand) {
+			expect(read.input).toEqual({
+				TableName: "verification",
+				Key: { id: "v9" },
+				ConsistentRead: true,
+			});
+		}
+	});
+
+	test("moves on to the next candidate after a stale one", async () => {
+		const { consumeOne, sendCalls } = createMethod(async (command) => {
+			if (command instanceof ScanCommand) {
+				return {
+					Items: [
+						{ id: "stale", identifier: "token" },
+						{ id: "live", identifier: "token" },
+					],
+				};
+			}
+			if (command instanceof GetCommand) {
+				return {};
+			}
+			if (command instanceof DeleteCommand && command.input.Key?.id === "live") {
+				return { Attributes: { id: "live", identifier: "token" } };
+			}
+			throw conditionalCheckFailure();
+		});
+
+		const consumed = await consumeOne({
+			model: "verification",
+			where: [{ field: "identifier", value: "token" }],
+		});
+
+		expect(consumed).toEqual({ id: "live", identifier: "token" });
+		expect(sendCalls.map((call) => call?.constructor.name)).toEqual([
+			"ScanCommand",
+			"DeleteCommand",
+			"GetCommand",
+			"ScanCommand",
+			"DeleteCommand",
+		]);
+	});
+
+	test("gives up with an error when the row keeps matching and the delete keeps failing", async () => {
+		const { consumeOne, sendCalls } = createMethod(async (command) => {
+			if (command instanceof ScanCommand) {
+				return { Items: [{ id: "v9", identifier: "token" }] };
+			}
+			if (command instanceof GetCommand) {
+				return { Item: { id: "v9", identifier: "token" } };
 			}
 			throw conditionalCheckFailure();
 		});
@@ -229,9 +300,34 @@ describe("createConsumeOneMethod", () => {
 		expect(
 			sendCalls.filter((call) => call instanceof DeleteCommand),
 		).toHaveLength(MAX_ATOMIC_WRITE_ATTEMPTS);
-		expect(
-			sendCalls.filter((call) => call instanceof ScanCommand),
-		).toHaveLength(MAX_ATOMIC_WRITE_ATTEMPTS);
+		expect(sendCalls.filter((call) => call instanceof ScanCommand)).toHaveLength(1);
+	});
+
+	test("does not treat a case-insensitive id as a key lookup", async () => {
+		const { consumeOne, sendCalls } = createMethod(async (command) => {
+			if (command instanceof ScanCommand) {
+				return { Items: [{ id: "MixedCaseId" }] };
+			}
+			if (command instanceof DeleteCommand) {
+				return { Attributes: { id: "MixedCaseId" } };
+			}
+			return {};
+		});
+
+		const consumed = await consumeOne({
+			model: "verification",
+			where: [{ field: "id", value: "mixedcaseid", mode: "insensitive" }],
+		});
+
+		expect(consumed).toEqual({ id: "MixedCaseId" });
+		expect(sendCalls.map((call) => call?.constructor.name)).toEqual([
+			"ScanCommand",
+			"DeleteCommand",
+		]);
+		const write = sendCalls[1];
+		if (write instanceof DeleteCommand) {
+			expect(write.input.Key).toEqual({ id: "MixedCaseId" });
+		}
 	});
 
 	test("buffers a pinned delete and returns the row it read inside a transaction", async () => {

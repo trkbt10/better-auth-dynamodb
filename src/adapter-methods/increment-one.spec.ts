@@ -255,6 +255,51 @@ describe("createIncrementOneMethod", () => {
 		]);
 	});
 
+	test("returns null when the row found through an index no longer matches", async () => {
+		// The index still lists the counter below the limit; the row itself is at it.
+		const { documentClient, sendCalls } = createDocumentClientStub({
+			respond: async (command) => {
+				if (command instanceof QueryCommand) {
+					return { Items: [{ id: "r1", key: "ip", count: 1 }] };
+				}
+				if (command instanceof GetCommand) {
+					return { Item: { id: "r1", key: "ip", count: 2 } };
+				}
+				throw conditionalCheckFailure();
+			},
+		});
+		const incrementOne = createIncrementOneMethod(
+			{ documentClient },
+			{
+				adapterConfig: buildAdapterConfig(documentClient, (props) => {
+					if (props.field === "key") {
+						return "rateLimit_key_idx";
+					}
+					return undefined;
+				}),
+				getFieldName,
+				getDefaultModelName,
+			},
+		);
+
+		const updated = await incrementOne({
+			model: "rateLimit",
+			where: [
+				{ field: "key", value: "ip" },
+				{ field: "count", operator: "lt", value: 2 },
+			],
+			increment: { count: 1 },
+		});
+
+		expect(updated).toBeNull();
+		expect(sendCalls.map((call) => call?.constructor.name)).toEqual([
+			"QueryCommand",
+			"UpdateCommand",
+			"GetCommand",
+			"QueryCommand",
+		]);
+	});
+
 	test("gives up with an error when the condition keeps failing", async () => {
 		const { incrementOne, sendCalls } = createMethod(async (command) => {
 			if (command instanceof GetCommand) {

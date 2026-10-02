@@ -7,6 +7,7 @@
  */
 import {
 	DeleteCommand,
+	QueryCommand,
 	UpdateCommand,
 	type DynamoDBDocumentClient,
 } from "@aws-sdk/lib-dynamodb";
@@ -110,6 +111,35 @@ const createInterleavingClient = <TCommand>(props: {
 		documentClient: racingClient,
 		interferences: () => state.interferences,
 	};
+};
+
+/**
+ * A document client whose index queries keep answering what they answered
+ * first: a global secondary index that has not caught up with a write yet.
+ */
+const createStaleIndexClient = (): DynamoDBDocumentClient => {
+	const { documentClient: staleClient } = createTestClients(testConfig);
+	const firstAnswers = new Map<string, unknown>();
+	const send = staleClient.send.bind(staleClient);
+	const sendHandler: DynamoDBDocumentClient["send"] = async (
+		command: Parameters<typeof send>[0],
+	) => {
+		if (!(command instanceof QueryCommand) || !command.input.IndexName) {
+			return send(command);
+		}
+		const lookup = JSON.stringify([
+			command.input.TableName,
+			command.input.IndexName,
+			command.input.KeyConditionExpression,
+			command.input.ExpressionAttributeValues?.[":pk"],
+		]);
+		if (!firstAnswers.has(lookup)) {
+			firstAnswers.set(lookup, await send(command));
+		}
+		return firstAnswers.get(lookup);
+	};
+	staleClient.send = sendHandler;
+	return staleClient;
 };
 
 const isDeleteCommand = (command: unknown): command is DeleteCommand =>
@@ -637,6 +667,71 @@ describe("atomic methods under contention (transaction: false)", () => {
 				where: [{ field: "identifier", value: "contention-retry" }],
 			}),
 		).toHaveLength(0);
+	});
+
+	test("consumeOne returns null when the index still lists the row it consumed", async () => {
+		await createVerification("stale-consume");
+		const stale = createContentionAdapter(createStaleIndexClient());
+		const where = [{ field: "identifier", value: "stale-consume" }];
+
+		const first = await stale.consumeOne({ model: "verification", where });
+		const second = await stale.consumeOne({ model: "verification", where });
+
+		expect(first).not.toBeNull();
+		expect(second).toBeNull();
+	});
+
+	test("consumeOne does not hand out a row another caller consumed while the index still lists it", async () => {
+		await createVerification("stale-second");
+		const stale = createContentionAdapter(createStaleIndexClient());
+		const where = [{ field: "identifier", value: "stale-second" }];
+		// The index answer is recorded while only the first row exists ...
+		expect(await stale.findMany({ model: "verification", where })).toHaveLength(1);
+		// ... then that row is consumed elsewhere and the lookup keeps listing it.
+		await adapter.consumeOne({ model: "verification", where });
+
+		const consumed = await stale.consumeOne({ model: "verification", where });
+
+		expect(consumed).toBeNull();
+	});
+
+	test("incrementOne returns null when the index still lists the counter below its limit", async () => {
+		const user = await createUser({ email: "stale-counter@example.com", loginCount: 1 });
+		const stale = createContentionAdapter(createStaleIndexClient());
+		const increment = () =>
+			stale.incrementOne<UserRow>({
+				model: "user",
+				where: [
+					{ field: "email", value: "stale-counter@example.com" },
+					{ field: "loginCount", operator: "lt", value: 2 },
+				],
+				increment: { loginCount: 1 },
+			});
+
+		const first = await increment();
+		const second = await increment();
+
+		expect(first?.loginCount).toBe(2);
+		expect(second).toBeNull();
+		expect((await findUser(user.id))?.loginCount).toBe(2);
+	});
+
+	test("incrementOne applies to the current row when the index lists an older counter", async () => {
+		const user = await createUser({ email: "stale-value@example.com", loginCount: 1 });
+		const stale = createContentionAdapter(createStaleIndexClient());
+		const increment = () =>
+			stale.incrementOne<UserRow>({
+				model: "user",
+				where: [{ field: "email", value: "stale-value@example.com" }],
+				increment: { loginCount: 1 },
+			});
+
+		const values = [await increment(), await increment(), await increment()].map(
+			(row) => row?.loginCount,
+		);
+
+		expect(values).toEqual([2, 3, 4]);
+		expect((await findUser(user.id))?.loginCount).toBe(4);
 	});
 
 	test("incrementOne never lets concurrent callers pass a guarded limit", async () => {

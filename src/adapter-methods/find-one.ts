@@ -25,6 +25,7 @@ import {
 	applyWhereFilters,
 	type DynamoDBItem,
 } from "../adapter/executor/where-evaluator";
+import { canServeAsKeyCondition } from "../dynamodb/expressions/where-operator";
 import { resolvePinnedPrimaryKey } from "./atomic-write";
 
 type FindOneOptions = FindManyOptions & {
@@ -113,7 +114,7 @@ export const createFindOneMethod = (
 						const operator = condition.operator ?? "eq";
 						const connector = (condition.connector ?? "AND").toUpperCase();
 						const idFieldName = options.getFieldName({ model, field: "id" });
-						if (operator === "eq") {
+						if (operator === "eq" && canServeAsKeyCondition(condition)) {
 							if (connector === "AND") {
 								if (condition.field === idFieldName) {
 									const value = condition.value as NativeAttributeValue | undefined;

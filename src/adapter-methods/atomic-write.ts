@@ -4,9 +4,13 @@
  *
  * DynamoDB can only delete or update an item by its full primary key, so an
  * atomic method first resolves the row a where clause selects and then issues
- * a keyed write whose ConditionExpression re-checks the where clause. A failed
- * condition means the row changed after it was read; the caller resolves the
- * target again and retries.
+ * a keyed write whose ConditionExpression re-checks the where clause.
+ *
+ * A row found through an index or a scan may be stale: those reads are
+ * eventually consistent. So when the condition fails, the row is read again
+ * by its key, strongly consistently. Only that read decides whether the row
+ * is gone (look for another one) or still matches (retry with what it holds
+ * now).
  */
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
@@ -24,6 +28,8 @@ import {
 } from "../adapter/executor/where-evaluator";
 import type { AtomicCondition } from "../dynamodb/expressions/build-atomic-condition";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
+import { isCaseInsensitiveComparison } from "../dynamodb/expressions/where-operator";
+import type { ConditionalWriteResult } from "../dynamodb/ops/conditional-write";
 import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import {
@@ -34,12 +40,12 @@ import type { DynamoDBWhere } from "../dynamodb/types";
 import type { AdapterClientContainer } from "./client-container";
 
 /**
- * How many times an atomic method re-resolves its target after the condition
- * of its write failed. Every failure means another writer changed the row in
- * between, so retries end as soon as the row stops matching or the write wins.
- * The bound mirrors the compare-and-swap budget of Better Auth's own atomic
- * fallback (`MAX_ATTEMPTS` in `@better-auth/core/db/adapter`), which also
- * raises an error instead of reporting "no row matched" when it runs out.
+ * How many times an atomic method writes to one row. A write is repeated only
+ * when its condition failed although a strongly consistent read shows the row
+ * still matching, i.e. another writer changed it in between. The bound mirrors
+ * the compare-and-swap budget of Better Auth's own atomic fallback
+ * (`MAX_ATTEMPTS` in `@better-auth/core/db/adapter`), which also raises an
+ * error instead of reporting "no row matched" when it runs out.
  */
 export const MAX_ATOMIC_WRITE_ATTEMPTS = 5;
 
@@ -72,13 +78,20 @@ export const resolvePinnedPrimaryKey = (props: {
 	primaryKeyName: string;
 	getFieldName: (args: { model: string; field: string }) => string;
 }): PinnedPrimaryKey => {
-	const entry = normalizeWhere({ where: props.where }).find(
-		(candidate) =>
-			candidate.connector === "AND" &&
-			candidate.operator === "eq" &&
+	const entry = normalizeWhere({ where: props.where }).find((candidate) => {
+		if (candidate.connector !== "AND" || candidate.operator !== "eq") {
+			return false;
+		}
+		// A case-insensitive match is not a key lookup. A null value is: no
+		// row has a null primary key, so it pins the lookup to nothing.
+		if (isCaseInsensitiveComparison(candidate)) {
+			return false;
+		}
+		return (
 			props.getFieldName({ model: props.model, field: candidate.field }) ===
-				props.primaryKeyName,
-	);
+			props.primaryKeyName
+		);
+	});
 	if (!entry) {
 		return { pinned: false };
 	}
@@ -128,15 +141,18 @@ export const createContentionError = (method: string): DynamoDBAdapterError =>
 	);
 
 /**
- * Create the resolver that turns a where clause into the keyed row an atomic
- * write targets, or `null` when no row matches.
+ * Create the reads an atomic method resolves its target row with.
  *
- * A where clause that pins the primary key is read with a strongly consistent
- * GetItem and checked against the remaining predicates in memory. Any other
- * where clause goes through the query planner, exactly like update / delete.
- * Inside a transaction both paths see the transaction's own writes.
+ * - `readMatchingRow` reads one row by primary key, strongly consistently,
+ *   and checks the where clause against it in memory.
+ * - `findCandidate` goes through the query planner, exactly like update /
+ *   delete. Its result can be stale.
+ * - `resolveTarget` picks between the two: a where clause that pins the
+ *   primary key needs no planner.
+ *
+ * Inside a transaction all of them see the transaction's own writes.
  */
-export const createAtomicTargetResolver = (
+export const createAtomicRowReader = (
 	client: AdapterClientContainer,
 	options: AtomicMethodOptions,
 ) => {
@@ -151,7 +167,7 @@ export const createAtomicTargetResolver = (
 		transactionState,
 	});
 
-	const readPinnedRow = async (props: {
+	const readRow = async (props: {
 		tableName: string;
 		primaryKeyName: string;
 		value: NativeAttributeValue;
@@ -176,23 +192,23 @@ export const createAtomicTargetResolver = (
 		return output.Item ?? null;
 	};
 
-	const resolvePinnedTarget = async (props: {
+	const readMatchingRow = async (props: {
 		model: string;
 		where: Where[];
-		primaryKeyName: string;
-		value: NativeAttributeValue | null | undefined;
+		keyValue: NativeAttributeValue | null | undefined;
 	}): Promise<AtomicTarget | null> => {
-		if (props.value === undefined || props.value === null) {
+		if (props.keyValue === undefined || props.keyValue === null) {
 			return null;
 		}
-		const row = await readPinnedRow({
+		const primaryKeyName = getFieldName({ model: props.model, field: "id" });
+		const row = await readRow({
 			tableName: resolveTableName({
 				model: props.model,
 				getDefaultModelName,
 				config: adapterConfig,
 			}),
-			primaryKeyName: props.primaryKeyName,
-			value: props.value,
+			primaryKeyName,
+			value: props.keyValue,
 		});
 		if (!row) {
 			return null;
@@ -204,50 +220,136 @@ export const createAtomicTargetResolver = (
 		if (matches.length === 0) {
 			return null;
 		}
-		return {
-			key: { [props.primaryKeyName]: props.value },
-			snapshot: matches[0],
-		};
+		return { key: { [primaryKeyName]: props.keyValue }, snapshot: matches[0] };
 	};
 
-	return async (props: {
+	const findCandidate = async (props: {
 		model: string;
 		where: Where[];
+		excludedKeyValues: NativeAttributeValue[];
 	}): Promise<AtomicTarget | null> => {
 		const primaryKeyName = getFieldName({ model: props.model, field: "id" });
-		const pinned = resolvePinnedPrimaryKey({
-			model: props.model,
-			where: props.where,
-			primaryKeyName,
-			getFieldName,
-		});
-		if (pinned.pinned) {
-			return resolvePinnedTarget({
-				model: props.model,
-				where: props.where,
-				primaryKeyName,
-				value: pinned.value,
-			});
-		}
-
 		const plan = buildQueryPlan({
 			model: props.model,
 			where: props.where,
 			select: undefined,
 			sortBy: undefined,
-			limit: 1,
+			limit: props.excludedKeyValues.length + 1,
 			offset: undefined,
 			join: undefined,
 			getFieldName,
 			adapterConfig,
 		});
 		const items = await executePlan(plan);
-		if (items.length === 0) {
+		const candidate = items.find(
+			(item) => !props.excludedKeyValues.includes(item[primaryKeyName]),
+		);
+		if (!candidate) {
 			return null;
 		}
 		return {
-			key: buildPrimaryKey({ item: items[0], keyField: primaryKeyName }),
-			snapshot: items[0],
+			key: buildPrimaryKey({ item: candidate, keyField: primaryKeyName }),
+			snapshot: candidate,
 		};
 	};
+
+	const resolvePinned = (props: { model: string; where: Where[] }) =>
+		resolvePinnedPrimaryKey({
+			model: props.model,
+			where: props.where,
+			primaryKeyName: getFieldName({ model: props.model, field: "id" }),
+			getFieldName,
+		});
+
+	const resolveTarget = async (props: {
+		model: string;
+		where: Where[];
+	}): Promise<AtomicTarget | null> => {
+		const pinned = resolvePinned(props);
+		if (pinned.pinned) {
+			return readMatchingRow({ ...props, keyValue: pinned.value });
+		}
+		return findCandidate({ ...props, excludedKeyValues: [] });
+	};
+
+	return { readMatchingRow, findCandidate, resolvePinned, resolveTarget };
+};
+
+export type AtomicRowReader = ReturnType<typeof createAtomicRowReader>;
+
+/**
+ * Write to one row until the write is applied or the row stops matching.
+ * Returns the row the write reports, or `null` when a strongly consistent
+ * read shows that the row is gone or no longer matches the where clause.
+ */
+const settleOnRow = async (props: {
+	method: string;
+	target: AtomicTarget;
+	write: (target: AtomicTarget) => Promise<ConditionalWriteResult>;
+	reread: () => Promise<AtomicTarget | null>;
+}): Promise<DynamoDBItem | null> => {
+	const state = { target: props.target };
+	for (let attempt = 0; attempt < MAX_ATOMIC_WRITE_ATTEMPTS; attempt += 1) {
+		const result = await props.write(state.target);
+		if (result.applied && result.attributes) {
+			return result.attributes;
+		}
+		const fresh = await props.reread();
+		if (!fresh) {
+			return null;
+		}
+		state.target = fresh;
+	}
+	throw createContentionError(props.method);
+};
+
+/**
+ * Apply a conditional write to a single row matching the where clause.
+ *
+ * Returns the row the write reports, or `null` when no row matches. A
+ * candidate that turns out to be gone or changed is left out of the next
+ * lookup, so a stale index entry cannot be picked twice and another matching
+ * row is still reached.
+ */
+export const settleAtomicWrite = async (props: {
+	method: string;
+	reader: AtomicRowReader;
+	model: string;
+	where: Where[];
+	write: (target: AtomicTarget) => Promise<ConditionalWriteResult>;
+}): Promise<DynamoDBItem | null> => {
+	const { reader, model, where } = props;
+	const pinned = reader.resolvePinned({ model, where });
+	if (pinned.pinned) {
+		const reread = () =>
+			reader.readMatchingRow({ model, where, keyValue: pinned.value });
+		const target = await reread();
+		if (!target) {
+			return null;
+		}
+		return settleOnRow({ method: props.method, target, write: props.write, reread });
+	}
+
+	const excludedKeyValues: NativeAttributeValue[] = [];
+	for (;;) {
+		const candidate = await reader.findCandidate({
+			model,
+			where,
+			excludedKeyValues,
+		});
+		if (!candidate) {
+			return null;
+		}
+		const keyValue = Object.values(candidate.key)[0];
+		const row = await settleOnRow({
+			method: props.method,
+			target: candidate,
+			write: props.write,
+			reread: () => reader.readMatchingRow({ model, where, keyValue }),
+		});
+		if (row) {
+			return row;
+		}
+		excludedKeyValues.push(keyValue);
+	}
 };

@@ -23,10 +23,9 @@ import {
 } from "../dynamodb/ops/transaction";
 import type { AdapterClientContainer } from "./client-container";
 import {
-	MAX_ATOMIC_WRITE_ATTEMPTS,
 	buildConditionInput,
-	createAtomicTargetResolver,
-	createContentionError,
+	createAtomicRowReader,
+	settleAtomicWrite,
 	toAtomicWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
@@ -39,7 +38,7 @@ export const createIncrementOneMethod = (
 	const { documentClient } = client;
 	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
 		options;
-	const resolveTarget = createAtomicTargetResolver(client, options);
+	const reader = createAtomicRowReader(client, options);
 
 	// The update is buffered until the transaction commits, so the row handed
 	// back is computed from the row the transaction read. The guard fields and
@@ -87,61 +86,69 @@ export const createIncrementOneMethod = (
 		const primaryKeyName = getFieldName({ model, field: "id" });
 		const dynamoWhere = toAtomicWhere(where);
 
-		for (let attempt = 0; attempt < MAX_ATOMIC_WRITE_ATTEMPTS; attempt += 1) {
-			const target = await resolveTarget({ model, where });
+		if (!hasIncrementAssignments(assignments)) {
+			const target = await reader.resolveTarget({ model, where });
+			return (target?.snapshot ?? null) as T | null;
+		}
+
+		if (transactionState) {
+			const target = await reader.resolveTarget({ model, where });
 			if (!target) {
 				return null;
 			}
-			if (!hasIncrementAssignments(assignments)) {
-				return target.snapshot as T;
-			}
-			const expression = buildIncrementExpression({
-				snapshot: target.snapshot,
-				assignments,
+			const next = incrementInTransaction({
+				state: transactionState,
+				tableName,
+				primaryKeyName,
+				target,
+				next: buildIncrementExpression({
+					snapshot: target.snapshot,
+					assignments,
+				}).nextItem,
+				pinnedFields: [
+					...dynamoWhere.map((entry) =>
+						getFieldName({ model, field: entry.field }),
+					),
+					...Object.keys(assignments.increment),
+				],
 			});
-
-			if (transactionState) {
-				const next = incrementInTransaction({
-					state: transactionState,
-					tableName,
-					primaryKeyName,
-					target,
-					next: expression.nextItem,
-					pinnedFields: [
-						...dynamoWhere.map((entry) =>
-							getFieldName({ model, field: entry.field }),
-						),
-						...Object.keys(assignments.increment),
-					],
-				});
-				return next as T;
-			}
-
-			const result = await sendConditionalUpdate(documentClient, {
-				TableName: tableName,
-				Key: target.key,
-				UpdateExpression: expression.updateExpression,
-				...buildConditionInput(
-					buildAtomicCondition({
-						model,
-						where: dynamoWhere,
-						primaryKeyName,
-						getFieldName,
-						snapshot: target.snapshot,
-					}),
-					{
-						conditions: expression.counterConditions,
-						expressionAttributeNames: expression.expressionAttributeNames,
-						expressionAttributeValues: expression.expressionAttributeValues,
-					},
-				),
-				ReturnValues: "ALL_NEW",
-			});
-			if (result.applied && result.attributes) {
-				return result.attributes as T;
-			}
+			return next as T;
 		}
 
-		throw createContentionError("incrementOne");
+		// The expression depends on what the counters hold (number, NULL or
+		// nothing), so it is rebuilt from the row each write is based on.
+		const updated = await settleAtomicWrite({
+			method: "incrementOne",
+			reader,
+			model,
+			where,
+			write: (target) => {
+				const expression = buildIncrementExpression({
+					snapshot: target.snapshot,
+					assignments,
+				});
+				return sendConditionalUpdate(documentClient, {
+					TableName: tableName,
+					Key: target.key,
+					UpdateExpression: expression.updateExpression,
+					...buildConditionInput(
+						buildAtomicCondition({
+							model,
+							where: dynamoWhere,
+							primaryKeyName,
+							getFieldName,
+							snapshot: target.snapshot,
+						}),
+						{
+							conditions: expression.counterConditions,
+							expressionAttributeNames: expression.expressionAttributeNames,
+							expressionAttributeValues: expression.expressionAttributeValues,
+						},
+					),
+					ReturnValues: "ALL_NEW",
+				});
+			},
+		});
+		return updated as T | null;
 	};
 };

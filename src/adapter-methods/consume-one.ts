@@ -20,11 +20,9 @@ import {
 } from "../dynamodb/ops/transaction";
 import type { AdapterClientContainer } from "./client-container";
 import {
-	MAX_ATOMIC_WRITE_ATTEMPTS,
 	buildConditionInput,
-	createAtomicTargetResolver,
-	createContentionError,
-	resolvePinnedPrimaryKey,
+	createAtomicRowReader,
+	settleAtomicWrite,
 	toAtomicWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
@@ -37,7 +35,7 @@ export const createConsumeOneMethod = (
 	const { documentClient } = client;
 	const { adapterConfig, getFieldName, getDefaultModelName, transactionState } =
 		options;
-	const resolveTarget = createAtomicTargetResolver(client, options);
+	const reader = createAtomicRowReader(client, options);
 
 	// The delete is buffered until the transaction commits, so the row handed
 	// back is the one the transaction read. Every attribute of the stored row
@@ -74,7 +72,7 @@ export const createConsumeOneMethod = (
 		const dynamoWhere = toAtomicWhere(where);
 
 		if (transactionState) {
-			const target = await resolveTarget({ model, where });
+			const target = await reader.resolveTarget({ model, where });
 			if (!target) {
 				return null;
 			}
@@ -89,12 +87,7 @@ export const createConsumeOneMethod = (
 
 		// A where clause that pins the primary key and that DynamoDB can evaluate
 		// by itself needs no prior read: one conditional DeleteItem decides.
-		const pinned = resolvePinnedPrimaryKey({
-			model,
-			where,
-			primaryKeyName,
-			getFieldName,
-		});
+		const pinned = reader.resolvePinned({ model, where });
 		if (pinned.pinned && canEvaluateWhereOnServer(dynamoWhere)) {
 			if (pinned.value === undefined || pinned.value === null) {
 				return null;
@@ -118,30 +111,27 @@ export const createConsumeOneMethod = (
 			return (result.attributes ?? null) as T | null;
 		}
 
-		for (let attempt = 0; attempt < MAX_ATOMIC_WRITE_ATTEMPTS; attempt += 1) {
-			const target = await resolveTarget({ model, where });
-			if (!target) {
-				return null;
-			}
-			const result = await sendConditionalDelete(documentClient, {
-				TableName: tableName,
-				Key: target.key,
-				...buildConditionInput(
-					buildAtomicCondition({
-						model,
-						where: dynamoWhere,
-						primaryKeyName,
-						getFieldName,
-						snapshot: target.snapshot,
-					}),
-				),
-				ReturnValues: "ALL_OLD",
-			});
-			if (result.applied && result.attributes) {
-				return result.attributes as T;
-			}
-		}
-
-		throw createContentionError("consumeOne");
+		const consumed = await settleAtomicWrite({
+			method: "consumeOne",
+			reader,
+			model,
+			where,
+			write: (target) =>
+				sendConditionalDelete(documentClient, {
+					TableName: tableName,
+					Key: target.key,
+					...buildConditionInput(
+						buildAtomicCondition({
+							model,
+							where: dynamoWhere,
+							primaryKeyName,
+							getFieldName,
+							snapshot: target.snapshot,
+						}),
+					),
+					ReturnValues: "ALL_OLD",
+				}),
+		});
+		return consumed as T | null;
 	};
 };
