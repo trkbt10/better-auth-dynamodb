@@ -111,6 +111,11 @@ export type ResolvedDynamoDBAdapterConfig = {
     | ((props: { model: string; indexName: string }) => DynamoDBIndexKeySchema | undefined)
     | undefined;
   transaction: boolean;
+  /**
+   * Maps a default model name to the model name the Better Auth schema
+   * declares for it. Set per adapter instance, once the schema is known.
+   */
+  resolveSchemaModelName?: ((defaultModelName: string) => string | undefined) | undefined;
 };
 
 const ensureDocumentClient = (documentClient: DynamoDBDocumentClient | undefined): DynamoDBDocumentClient => {
@@ -125,9 +130,13 @@ const createDynamoDbCustomizer = (props: {
   adapterConfig: ResolvedDynamoDBAdapterConfig;
   transactionState?: DynamoDBTransactionState | undefined;
 }): AdapterFactoryCustomizeAdapterCreator => {
-  const { documentClient, adapterConfig, transactionState } = props;
+  const { documentClient, transactionState } = props;
 
-  return ({ getFieldName, getDefaultModelName }) => {
+  return ({ getFieldName, getDefaultModelName, schema }) => {
+    const adapterConfig: ResolvedDynamoDBAdapterConfig = {
+      ...props.adapterConfig,
+      resolveSchemaModelName: (defaultModelName) => schema[defaultModelName]?.modelName,
+    };
     const adapterClient: AdapterClientContainer = { documentClient };
     const primaryKeyLoader = createPrimaryKeyBatchLoader({
       documentClient,

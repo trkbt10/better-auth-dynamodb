@@ -108,8 +108,11 @@ export const convertToTableSchemas = (
 			}
 		};
 
-		// Process composite indexes first (they take precedence)
-		const tableCompositeIndexes = compositeIndexes[modelName] ?? [];
+		// Composite indexes and schema extensions are declared per model
+		// (`session`, `verification`, ...). A custom `modelName` renames the
+		// table, not the model, so they are looked up by the model key first.
+		const tableCompositeIndexes =
+			compositeIndexes[tableName] ?? compositeIndexes[modelName] ?? [];
 		const compositePartitionKeys = new Set<string>();
 
 		for (const composite of tableCompositeIndexes) {
@@ -145,7 +148,8 @@ export const convertToTableSchemas = (
 
 		// Process single-field indexes (skip if already part of composite with same PK)
 		const indexReferences = schemaOptions?.indexReferences !== false;
-		const tableExtensions = schemaExtensions[modelName] ?? {};
+		const tableExtensions =
+			schemaExtensions[tableName] ?? schemaExtensions[modelName] ?? {};
 
 		for (const [fieldName, field] of Object.entries(tableSchema.fields)) {
 			const dbFieldName = field.fieldName ?? fieldName;

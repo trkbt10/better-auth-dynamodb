@@ -51,12 +51,44 @@ describe("resolveTableName", () => {
 		expect(name).toBe("auth_user");
 	});
 
+	test("prefixes the model name the schema declares", () => {
+		const config = {
+			tableNamePrefix: "auth_",
+			resolveSchemaModelName: (defaultModelName: string) => {
+				if (defaultModelName === "user") {
+					return "user_custom";
+				}
+				return undefined;
+			},
+		};
+
+		expect(
+			resolveTableName({ model: "user", getDefaultModelName, config }),
+		).toBe("auth_user_custom");
+		expect(
+			resolveTableName({ model: "session", getDefaultModelName, config }),
+		).toBe("auth_session");
+	});
+
+	test("hands the default model name to tableNameResolver", () => {
+		const name = resolveTableName({
+			model: "users",
+			getDefaultModelName: () => "user",
+			config: {
+				tableNameResolver: (modelName: string) => `custom_${modelName}`,
+				resolveSchemaModelName: () => "user_custom",
+			},
+		});
+
+		expect(name).toBe("custom_user");
+	});
+
 	test("throws when no resolver or prefix", () => {
 		const error = captureError(() =>
 			resolveTableName({
 				model: "user",
 				getDefaultModelName,
-				config: { documentClient, indexNameResolver },
+				config: {},
 			}),
 		);
 

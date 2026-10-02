@@ -31,6 +31,28 @@ describe("generateTableSchemas", () => {
 		expect(tableNames).not.toContain("rateLimit");
 	});
 
+	it("keeps the default composite indexes of a model with a custom modelName", () => {
+		const schemas = generateTableSchemas({
+			session: { modelName: "user_sessions" },
+		});
+		const sessionSchema = schemas.find((s) => s.tableName === "user_sessions");
+
+		expect(sessionSchema?.indexMappings).toEqual(
+			expect.arrayContaining([
+				{
+					indexName: "user_sessions_userId_createdAt_idx",
+					partitionKey: "userId",
+					sortKey: "createdAt",
+				},
+				{
+					indexName: "user_sessions_token_createdAt_idx",
+					partitionKey: "token",
+					sortKey: "createdAt",
+				},
+			]),
+		);
+	});
+
 	it("creates GSI for indexed fields", () => {
 		const schemas = generateTableSchemas({});
 		const userSchema = schemas.find((s) => s.tableName === "user");

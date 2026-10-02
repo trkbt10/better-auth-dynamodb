@@ -68,10 +68,6 @@ const createAdapter = (options: BetterAuthOptions) => {
 const basicSuiteDisabledTests = {
 	// ValidationException: Invalid attribute value type (null written to the GSI key attribute nullableReference)
 	"create - should return null for nullable foreign keys": true,
-	// ValidationException: The table does not have the specified index: user_custom_email_idx
-	"findOne - should find a model with modified model name": true,
-	// ValidationException: The table does not have the specified index: one_to_one_table_one_to_one_idx
-	"findOne - should join a model with modified field name": true,
 };
 
 const { execute } = await testAdapter({
