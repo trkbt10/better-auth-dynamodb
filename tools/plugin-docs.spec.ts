@@ -1,5 +1,8 @@
 /**
  * @file Tests for plugin documentation fetcher.
+ *
+ * The parser fixtures are excerpts copied from https://better-auth.com/docs/llms.txt and the
+ * plugin pages it links to (fetched 2026-10-02, Better Auth 1.7.x documentation).
  */
 import {
 	parsePluginList,
@@ -11,110 +14,211 @@ import {
 
 describe("plugin-docs", () => {
 	describe("parsePluginList", () => {
-		it("parses plugin entries from llms.txt format", () => {
-			const content = `
-# Better Auth Documentation
+		it("parses plugin entries from the documentation index format", () => {
+			const content = `# Better Auth Documentation
 
-## Plugins
-- [Two Factor](/llms.txt/docs/plugins/2fa.md): Two-factor authentication
-- [Organization](/llms.txt/docs/plugins/organization.md): Organization management
-- [OIDC Provider](/llms.txt/docs/plugins/oidc-provider.md): OpenID Connect provider
+> The most comprehensive authentication framework for TypeScript
+
+This index covers the Better Auth 1.7.x documentation.
+
+## Documentation
+
+- [Introduction](https://better-auth.com/docs/introduction.md): Introduction to Better Auth.
+  - **Plugins**
+  - [Dashboard](https://better-auth.com/docs/infrastructure/plugins/dashboard.md): The \`dash()\` plugin connects your Better Auth instance to Better Auth Infrastructure, enabling analytics tracking, activity monitoring, event logging, and admin dashboard APIs.
+- Plugins
+
+  - **Authentication**
+  - [Two-Factor Authentication (2FA)](https://better-auth.com/docs/plugins/2fa.md): Enhance your app's security with two-factor authentication.
+  - [Username](https://better-auth.com/docs/plugins/username.md): Username plugin
+
+  - **Authorization**
+  - API Key
+    - [API Key](https://better-auth.com/docs/plugins/api-key.md): API Key plugin for Better Auth.
+    - [Reference](https://better-auth.com/docs/plugins/api-key/reference.md): API Key plugin options, permissions, and schema reference.
+  - [Organization](https://better-auth.com/docs/plugins/organization.md): The organization plugin allows you to manage your organization's members and teams.
+- AI Resources
+  - [LLMs.txt](/llms.txt)
 `;
 
 			const plugins = parsePluginList(content);
 
-			expect(plugins).toHaveLength(3);
-			expect(plugins[0]).toEqual({
-				name: "2fa",
-				path: "/llms.txt/docs/plugins/2fa.md",
-				description: "Two-factor authentication",
-			});
-			expect(plugins[1].name).toBe("organization");
-			expect(plugins[2].name).toBe("oidc-provider");
+			expect(plugins).toEqual([
+				{
+					name: "2fa",
+					path: "https://better-auth.com/docs/plugins/2fa.md",
+					description: "Enhance your app's security with two-factor authentication.",
+				},
+				{
+					name: "username",
+					path: "https://better-auth.com/docs/plugins/username.md",
+					description: "Username plugin",
+				},
+				{
+					name: "api-key",
+					path: "https://better-auth.com/docs/plugins/api-key.md",
+					description: "API Key plugin for Better Auth.",
+				},
+				{
+					name: "api-key/reference",
+					path: "https://better-auth.com/docs/plugins/api-key/reference.md",
+					description: "API Key plugin options, permissions, and schema reference.",
+				},
+				{
+					name: "organization",
+					path: "https://better-auth.com/docs/plugins/organization.md",
+					description: "The organization plugin allows you to manage your organization's members and teams.",
+				},
+			]);
+		});
+
+		it("parses plugin entries from a versioned documentation index", () => {
+			const content = `  - [OIDC Provider](https://better-auth.com/docs/1.6/plugins/oidc-provider.md): Open ID Connect plugin for Better Auth that allows you to have your own OIDC provider.
+`;
+
+			expect(parsePluginList(content)).toEqual([
+				{
+					name: "oidc-provider",
+					path: "https://better-auth.com/docs/1.6/plugins/oidc-provider.md",
+					description: "Open ID Connect plugin for Better Auth that allows you to have your own OIDC provider.",
+				},
+			]);
 		});
 
 		it("returns empty array for content without plugins", () => {
-			const content = "# No plugins here";
+			const content = `# Better Auth
+
+## Documentation
+
+- [Current documentation index](https://better-auth.com/docs/llms.txt): All pages for the latest stable release.
+- [Documentation MCP server](https://mcp.better-auth.com/mcp): Search and retrieve Better Auth documentation from MCP-capable clients.
+`;
 			expect(parsePluginList(content)).toHaveLength(0);
 		});
 	});
 
 	describe("extractSchemaInfo", () => {
-		it("extracts table names from markdown headers", () => {
-			const markdown = `
-# OIDC Provider
+		it("extracts tables from Table Name labels and DatabaseTable components", () => {
+			const markdown = `## Schema [#schema]
 
-## Database Tables
+The OAuth Provider plugin adds the following tables to the database:
 
-### 1. oauthApplication
-Stores OAuth clients.
+### OAuth Client [#oauth-client-1]
 
-### 2. oauthAccessToken
-Stores access tokens.
+Table Name: \`oauthClient\`
 
-### 3. oauthConsent
-Tracks user consent.
+
+
+<DatabaseTable name="oauthClient" fields="oauthClientTableFields" />
+
+### OAuth Refresh Token [#oauth-refresh-token]
+
+Table Name: \`oauthRefreshToken\`
+
+
+
+<DatabaseTable name="oauthRefreshToken" fields="oauthRefreshTokenTableFields" />
+
+## Options [#options]
 `;
 
 			const schema = extractSchemaInfo(markdown);
 
-			expect(schema.tables).toContain("oauthApplication");
-			expect(schema.tables).toContain("oauthAccessToken");
-			expect(schema.tables).toContain("oauthConsent");
+			expect(schema.tables).toEqual(["oauthClient", "oauthRefreshToken"]);
+			expect(schema.indexedFields).toEqual([]);
 		});
 
-		it("extracts indexed fields from field descriptions", () => {
-			const markdown = `
-### Fields
-- \`clientId\` (string, Primary Key): Unique client identifier
-- \`userId\` (string, Foreign Key): References user table
-- \`email\` (string, unique): User email
-- \`token\` is indexed for lookups
+		it("extracts tables from Table labels and DatabaseTable components (2fa and creem pages)", () => {
+			const markdown = `## Schema [#schema]
+
+The plugin requires 1 additional field in the \`user\` table and 1 additional table to store the two factor authentication data.
+
+Table: \`user\`
+
+
+
+<DatabaseTable name="user" fields="twoFactorUserTableFields" />
+
+<DatabaseTable name="creem_subscription" fields="creemSubscriptionTableFields" />
 `;
 
 			const schema = extractSchemaInfo(markdown);
 
-			expect(schema.indexedFields).toContain("clientId");
-			expect(schema.indexedFields).toContain("userId");
-			expect(schema.indexedFields).toContain("email");
-			expect(schema.indexedFields).toContain("token");
+			expect(schema.tables).toEqual(["user", "creem_subscription"]);
 		});
 
-		it("skips common non-table words", () => {
-			const markdown = `
-### Schema
-### Fields
-### Migration
-### oauthClient
+		it("extracts tables from Model tables in the schema section", () => {
+			const markdown = `## Schema [#schema]
+
+The plugin adds the following models. Use \`auth generate\` to create the exact schema for your database adapter.
+
+| Model                   | Purpose                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| \`scimConnectionBinding\` | Stores the connection's provisioning domain and decommission status.            |
+| \`scimUser\`              | Stores canonical User attributes and the linked Better Auth User ID.            |
+
+## Related [#related]
 `;
 
 			const schema = extractSchemaInfo(markdown);
 
-			expect(schema.tables).not.toContain("Schema");
-			expect(schema.tables).not.toContain("Fields");
-			expect(schema.tables).not.toContain("Migration");
-			expect(schema.tables).toContain("oauthClient");
+			expect(schema.tables).toEqual(["scimConnectionBinding", "scimUser"]);
 		});
 
-		it("extracts tables from Better Auth docs format (Table Name: `xxx`)", () => {
-			const markdown = `
-## Schema
+		it("extracts the table and indexed fields from a Field table in the schema section", () => {
+			const markdown = `## Schema [#schema]
 
-### OAuth Application
+The SIWE plugin adds a \`walletAddress\` table to store user wallet associations:
 
-Table Name: \`oauthApplication\`
+| Field     | Type    | Description                               |
+| --------- | ------- | ----------------------------------------- |
+| id        | string  | Primary key                               |
+| userId    | string  | Reference to user.id                      |
+| address   | string  | Ethereum wallet address                   |
+| isPrimary | boolean | Whether this is the user's primary wallet |
 
-<DatabaseTable fields={[...]} />
-
-### OAuth Access Token
-
-Table Name: \`oauthAccessToken\`
+## Example Implementation [#example-implementation]
 `;
 
 			const schema = extractSchemaInfo(markdown);
 
-			expect(schema.tables).toContain("oauthApplication");
-			expect(schema.tables).toContain("oauthAccessToken");
+			expect(schema.tables).toEqual(["walletAddress"]);
+			expect(schema.indexedFields).toEqual(["id", "userId"]);
+		});
+
+		it("ignores table mentions outside the schema section", () => {
+			const markdown = `<Callout type="warn">
+  To sign in with a phone number and password, the user must have a corresponding record in the \`account\` table with the \`providerId\` set specifically to \`"credential"\`. If you are migrating from another auth provider or seeding users manually, ensure this record exists.
+</Callout>
+
+## Schema [#schema]
+
+The plugin requires 2 fields to be added to the user table
+
+### User Table [#user-table]
+
+<DatabaseTable name="user" fields="phoneNumberUserTableFields" />
+`;
+
+			const schema = extractSchemaInfo(markdown);
+
+			expect(schema.tables).toEqual(["user"]);
+		});
+
+		it("does not end the schema section at a comment line inside a fenced code block", () => {
+			const markdown = `## Schema [#schema]
+
+\`\`\`bash
+# .env
+POLAR_ACCESS_TOKEN=...
+\`\`\`
+
+The SIWE plugin adds a \`walletAddress\` table to store user wallet associations:
+`;
+
+			const schema = extractSchemaInfo(markdown);
+
+			expect(schema.tables).toEqual(["walletAddress"]);
 		});
 	});
 
@@ -136,17 +240,24 @@ Table Name: \`oauthAccessToken\`
 			const pluginNames = plugins.map((p) => p.name);
 			expect(pluginNames).toContain("2fa");
 			expect(pluginNames).toContain("organization");
-			expect(pluginNames).toContain("oidc-provider");
+			expect(pluginNames).toContain("oauth-provider");
+			for (const plugin of plugins) {
+				expect(plugin.path).toMatch(/^https:\/\/better-auth\.com\/docs\/plugins\/.+\.md$/);
+			}
 		});
 	});
 
 	describe("getPluginInfo (integration)", () => {
-		it("fetches and parses oidc-provider plugin", async () => {
-			const { plugin, schema } = await getPluginInfo("oidc-provider");
+		it("fetches and parses oauth-provider plugin", async () => {
+			const { plugin, schema } = await getPluginInfo("oauth-provider");
 
-			expect(plugin.name).toBe("oidc-provider");
-			expect(plugin.description).toBeDefined();
-			expect(schema.rawContent.length).toBeGreaterThan(100);
+			expect(plugin.name).toBe("oauth-provider");
+			expect(plugin.path).toBe("https://better-auth.com/docs/plugins/oauth-provider.md");
+			expect(plugin.description).toContain("OAuth 2.1 provider");
+			expect(schema.rawContent).toContain("# OAuth 2.1 Provider");
+			expect(schema.tables).toEqual(
+				expect.arrayContaining(["oauthClient", "oauthRefreshToken", "oauthAccessToken", "oauthConsent"]),
+			);
 		});
 
 		it("throws error for unknown plugin", async () => {

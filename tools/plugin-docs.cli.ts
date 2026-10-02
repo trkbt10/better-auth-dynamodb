@@ -4,8 +4,8 @@
  *
  * Usage:
  *   bun tools/plugin-docs.cli.ts --list
- *   bun tools/plugin-docs.cli.ts oidc-provider
- *   bun tools/plugin-docs.cli.ts oidc-provider --schema
+ *   bun tools/plugin-docs.cli.ts oauth-provider
+ *   bun tools/plugin-docs.cli.ts oauth-provider --schema
  */
 import { getPluginInfo, listPlugins } from "./plugin-docs";
 
@@ -23,8 +23,8 @@ Usage:
 
 Examples:
   bun tools/plugin-docs.cli.ts --list
-  bun tools/plugin-docs.cli.ts oidc-provider
-  bun tools/plugin-docs.cli.ts oidc-provider --schema
+  bun tools/plugin-docs.cli.ts oauth-provider
+  bun tools/plugin-docs.cli.ts oauth-provider --schema
 `);
 		return;
 	}
