@@ -167,22 +167,53 @@ const evaluateEndsWith = (ctx: EvaluationContext): boolean => {
 	return false;
 };
 
+// A null field has two representations in DynamoDB: a NULL-typed attribute,
+// and no attribute at all (a row written before the field existed, or an
+// index key attribute, which cannot hold NULL). A comparison with null has to
+// accept both, as `IS NULL` does for a column that was never set.
+const isAbsent = (value: unknown): boolean =>
+	value === undefined || value === null;
+
+const buildEqualsExpression = (ctx: FilterExpressionContext): string => {
+	const valueToken = ctx.appendValue(ctx.value as NativeAttributeValue);
+	if (ctx.value === null) {
+		return `(attribute_not_exists(${ctx.fieldToken}) OR ${ctx.fieldToken} = ${valueToken})`;
+	}
+	return `${ctx.fieldToken} = ${valueToken}`;
+};
+
+const evaluateEquals = (ctx: EvaluationContext): boolean => {
+	if (ctx.value === null) {
+		return isAbsent(ctx.fieldValue);
+	}
+	return ctx.fieldValue === ctx.value;
+};
+
+const buildNotEqualsExpression = (ctx: FilterExpressionContext): string => {
+	const valueToken = ctx.appendValue(ctx.value as NativeAttributeValue);
+	if (ctx.value === null) {
+		return `(attribute_exists(${ctx.fieldToken}) AND ${ctx.fieldToken} <> ${valueToken})`;
+	}
+	return `${ctx.fieldToken} <> ${valueToken}`;
+};
+
+const evaluateNotEquals = (ctx: EvaluationContext): boolean => {
+	if (ctx.value === null) {
+		return !isAbsent(ctx.fieldValue);
+	}
+	return ctx.fieldValue !== ctx.value;
+};
+
 const HANDLERS: Record<WhereOperator, OperatorHandler> = {
 	eq: {
 		requiresClientFilter: false,
-		buildFilterExpression: (ctx) => {
-			const valueToken = ctx.appendValue(ctx.value as NativeAttributeValue);
-			return `${ctx.fieldToken} = ${valueToken}`;
-		},
-		evaluate: (ctx) => ctx.fieldValue === ctx.value,
+		buildFilterExpression: buildEqualsExpression,
+		evaluate: evaluateEquals,
 	},
 	ne: {
 		requiresClientFilter: false,
-		buildFilterExpression: (ctx) => {
-			const valueToken = ctx.appendValue(ctx.value as NativeAttributeValue);
-			return `${ctx.fieldToken} <> ${valueToken}`;
-		},
-		evaluate: (ctx) => ctx.fieldValue !== ctx.value,
+		buildFilterExpression: buildNotEqualsExpression,
+		evaluate: evaluateNotEquals,
 	},
 	gt: {
 		requiresClientFilter: false,
@@ -316,3 +347,82 @@ export const isClientOnlyOperator = (operator: string | undefined): boolean => {
 
 export const normalizeWhereOperator = (operator: string | undefined): string =>
 	normalizeOperatorValue(operator);
+
+/**
+ * `mode: "insensitive"` only applies to string comparisons.
+ */
+export const isCaseInsensitiveComparison = (entry: {
+	mode?: string | undefined;
+	value: unknown;
+}): boolean => {
+	if (entry.mode !== "insensitive") {
+		return false;
+	}
+	if (Array.isArray(entry.value)) {
+		return entry.value.some(isString);
+	}
+	return isString(entry.value);
+};
+
+/**
+ * Whether a where entry has to be evaluated in memory: DynamoDB has neither
+ * an ends_with function nor case-insensitive comparison.
+ */
+export const requiresClientEvaluation = (entry: {
+	operator?: string | undefined;
+	mode?: string | undefined;
+	value: unknown;
+}): boolean => {
+	if (isClientOnlyOperator(entry.operator)) {
+		return true;
+	}
+	return isCaseInsensitiveComparison(entry);
+};
+
+/**
+ * Whether the value of an equality (or IN) entry can be used as a key
+ * condition. A key condition is an exact, case-sensitive match on a key
+ * attribute, and a key attribute never holds null: a row whose field is null
+ * is simply absent from the index.
+ */
+export const canServeAsKeyCondition = (entry: {
+	mode?: string | undefined;
+	value: unknown;
+}): boolean => {
+	if (isCaseInsensitiveComparison(entry)) {
+		return false;
+	}
+	if (Array.isArray(entry.value)) {
+		return entry.value.every((value) => !isAbsent(value));
+	}
+	return !isAbsent(entry.value);
+};
+
+const foldCase = (value: unknown): unknown => {
+	if (isString(value)) {
+		return value.toLowerCase();
+	}
+	if (Array.isArray(value)) {
+		return value.map((entry) => foldCase(entry));
+	}
+	return value;
+};
+
+/**
+ * Evaluate one where entry against an attribute value in memory.
+ */
+export const evaluateWhereEntry = (props: {
+	operator: string | undefined;
+	mode?: string | undefined;
+	fieldValue: NativeAttributeValue | undefined;
+	value: unknown;
+}): boolean => {
+	const handler = getOperatorHandler(props.operator);
+	if (!isCaseInsensitiveComparison(props)) {
+		return handler.evaluate({ fieldValue: props.fieldValue, value: props.value });
+	}
+	return handler.evaluate({
+		fieldValue: foldCase(props.fieldValue) as NativeAttributeValue | undefined,
+		value: foldCase(props.value),
+	});
+};

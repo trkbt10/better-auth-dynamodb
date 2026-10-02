@@ -6,6 +6,7 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import type { AdapterClientContainer } from "./client-container";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
+import { omitNullIndexKeys } from "../dynamodb/mapping/index-key-attributes";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import { isConditionalCheckFailure } from "../dynamodb/ops/conditional-write";
 import {
@@ -71,7 +72,10 @@ export const createCreateMethod = (
 	}) => {
 		const tableName = resolveModelTableName(model);
 		const primaryKeyName = getFieldName({ model, field: "id" });
-		const item = data as Record<string, NativeAttributeValue>;
+		const item = omitNullIndexKeys(
+			data as Record<string, NativeAttributeValue>,
+			adapterConfig.resolveIndexKeyAttributes?.(model) ?? [],
+		);
 		if (transactionState) {
 			bufferTransactionCreate(transactionState, {
 				tableName,

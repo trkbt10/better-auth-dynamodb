@@ -27,7 +27,7 @@ import {
 	buildConditionInput,
 	createAtomicTargetResolver,
 	createContentionError,
-	toDynamoWhere,
+	toAtomicWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
 } from "./atomic-write";
@@ -74,14 +74,18 @@ export const createIncrementOneMethod = (
 		increment: Record<string, number>;
 		set?: Record<string, unknown> | undefined;
 	}): Promise<T | null> => {
-		const assignments = resolveIncrementAssignments({ increment, set });
+		const assignments = resolveIncrementAssignments({
+			increment,
+			set,
+			indexKeyAttributes: adapterConfig.resolveIndexKeyAttributes?.(model),
+		});
 		const tableName = resolveTableName({
 			model,
 			getDefaultModelName,
 			config: adapterConfig,
 		});
 		const primaryKeyName = getFieldName({ model, field: "id" });
-		const dynamoWhere = toDynamoWhere(where);
+		const dynamoWhere = toAtomicWhere(where);
 
 		for (let attempt = 0; attempt < MAX_ATOMIC_WRITE_ATTEMPTS; attempt += 1) {
 			const target = await resolveTarget({ model, where });

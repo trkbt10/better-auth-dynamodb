@@ -13,7 +13,10 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
-import { normalizeWhere } from "../adapter/planner/normalize-where";
+import {
+	normalizeWhere,
+	toDynamoWhere,
+} from "../adapter/planner/normalize-where";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import {
 	applyWhereFilters,
@@ -56,13 +59,8 @@ export type PinnedPrimaryKey =
 	| { pinned: true; value: NativeAttributeValue | null | undefined }
 	| { pinned: false };
 
-export const toDynamoWhere = (where: Where[]): DynamoDBWhere[] =>
-	normalizeWhere({ where }).map((entry) => ({
-		field: entry.field,
-		operator: entry.operator,
-		value: entry.value,
-		connector: entry.connector,
-	}));
+export const toAtomicWhere = (where: Where[]): DynamoDBWhere[] =>
+	toDynamoWhere(normalizeWhere({ where }));
 
 /**
  * Resolve the primary key value when the where clause selects one row by its

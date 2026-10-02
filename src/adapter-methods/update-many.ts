@@ -30,12 +30,19 @@ type UpdateExecutionResult = {
 	updatedItems: Record<string, unknown>[];
 };
 
+// A null index key attribute cannot be stored; the attribute is removed instead.
 const applyPatchData = (
 	item: DynamoDBItem,
 	update: Record<string, unknown>,
+	indexKeyAttributes: string[],
 ): Record<string, unknown> =>
 	Object.entries(update).reduce<Record<string, unknown>>(
-		(acc, [key, value]) => ({ ...acc, [key]: value }),
+		(acc, [key, value]) => {
+			if (value === null && indexKeyAttributes.includes(key)) {
+				return { ...acc, [key]: undefined };
+			}
+			return { ...acc, [key]: value };
+		},
 		{ ...item },
 	);
 
@@ -172,7 +179,11 @@ export const createUpdateExecutor = (
 		};
 
 		for (const item of filteredItems) {
-			const nextItem = applyPatchData(item, update);
+			const nextItem = applyPatchData(
+				item,
+				update,
+				adapterConfig.resolveIndexKeyAttributes?.(model) ?? [],
+			);
 			if (transactionState) {
 				const next = stripUndefined(nextItem);
 				bufferTransactionWrite(transactionState, {

@@ -10,7 +10,7 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import type { DynamoDBWhere } from "../types";
 import { DynamoDBAdapterError } from "../errors/errors";
 import { buildFilterExpression } from "./build-filter-expression";
-import { isClientOnlyOperator } from "./where-operator";
+import { requiresClientEvaluation } from "./where-operator";
 
 export type AtomicCondition = {
 	conditionExpression: string;
@@ -20,10 +20,11 @@ export type AtomicCondition = {
 
 /**
  * A where clause can be lowered into a condition expression only when every
- * operator has a DynamoDB counterpart (ends_with does not).
+ * entry has a DynamoDB counterpart (ends_with and case-insensitive comparisons
+ * do not).
  */
 export const canEvaluateWhereOnServer = (where: DynamoDBWhere[]): boolean =>
-	where.every((entry) => !isClientOnlyOperator(entry.operator));
+	where.every((entry) => !requiresClientEvaluation(entry));
 
 const resolveUniqueFields = (fields: string[]): string[] =>
 	Array.from(new Set(fields));

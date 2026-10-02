@@ -2,7 +2,7 @@
  * @file In-memory where clause evaluation for adapter executor.
  */
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import { getOperatorHandler, normalizeWhereOperator } from "../../dynamodb/expressions/where-operator";
+import { evaluateWhereEntry, normalizeWhereOperator } from "../../dynamodb/expressions/where-operator";
 import type { NormalizedWhere } from "../query-plan";
 
 export type DynamoDBItem = Record<string, NativeAttributeValue>;
@@ -12,15 +12,19 @@ type NormalizedCondition = {
 	operator: string;
 	value: unknown;
 	connector: "AND" | "OR";
+	mode?: "sensitive" | "insensitive" | undefined;
 };
 
 const evaluateCondition = (props: {
 	item: DynamoDBItem;
 	condition: NormalizedCondition;
 }): boolean => {
-	const handler = getOperatorHandler(props.condition.operator);
-	const fieldValue = props.item[props.condition.fieldName];
-	return handler.evaluate({ fieldValue, value: props.condition.value });
+	return evaluateWhereEntry({
+		operator: props.condition.operator,
+		mode: props.condition.mode,
+		fieldValue: props.item[props.condition.fieldName],
+		value: props.condition.value,
+	});
 };
 
 const normalizeWhere = (where: NormalizedWhere[]): NormalizedCondition[] =>
@@ -29,6 +33,7 @@ const normalizeWhere = (where: NormalizedWhere[]): NormalizedCondition[] =>
 		operator: normalizeWhereOperator(entry.operator),
 		value: entry.value,
 		connector: entry.connector,
+		mode: entry.mode,
 	}));
 
 const matchesWhere = (props: {

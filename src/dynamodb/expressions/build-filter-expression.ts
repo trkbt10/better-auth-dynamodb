@@ -6,7 +6,7 @@ import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { DynamoDBAdapterError } from "../errors/errors";
 import {
 	getOperatorHandler,
-	isClientOnlyOperator,
+	requiresClientEvaluation,
 	type FilterExpressionContext,
 } from "./where-operator";
 
@@ -37,7 +37,7 @@ const normalizeConnector = (connector: string | undefined): "AND" | "OR" => {
 
 const hasClientOnlyOperator = (where: DynamoDBWhere[]): boolean => {
 	for (const entry of where) {
-		if (isClientOnlyOperator(entry.operator)) {
+		if (requiresClientEvaluation(entry)) {
 			return true;
 		}
 	}

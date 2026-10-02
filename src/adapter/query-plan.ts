@@ -24,6 +24,10 @@ export type NormalizedWhere = {
 		| "ends_with";
 	value: unknown;
 	connector: "AND" | "OR";
+	/**
+	 * Case sensitivity of string comparisons; sensitive when omitted.
+	 */
+	mode?: "sensitive" | "insensitive" | undefined;
 	requiresClientFilter: boolean;
 };
 

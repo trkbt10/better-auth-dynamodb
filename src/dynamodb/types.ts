@@ -53,9 +53,12 @@ export type DynamoDBWhereOperator =
 
 export type DynamoDBWhereConnector = "AND" | "OR";
 
+export type DynamoDBWhereMode = "sensitive" | "insensitive";
+
 export type DynamoDBWhere = {
 	field: string;
 	operator?: DynamoDBWhereOperator | undefined;
 	value: unknown;
 	connector?: DynamoDBWhereConnector | undefined;
+	mode?: DynamoDBWhereMode | undefined;
 };

@@ -3,7 +3,7 @@
  */
 import type { DynamoDBIndexKeySchema, DynamoDBWhere } from "../types";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
-import { normalizeWhereOperator } from "./where-operator";
+import { canServeAsKeyCondition, normalizeWhereOperator } from "./where-operator";
 
 export const buildKeyCondition = (props: {
 	model: string;
@@ -19,6 +19,11 @@ export const buildKeyCondition = (props: {
 	expressionAttributeValues: Record<string, NativeAttributeValue>;
 	indexName?: string | undefined;
 	remainingWhere: DynamoDBWhere[];
+	/**
+	 * Key attributes of the table or index the query runs on. DynamoDB rejects
+	 * a FilterExpression that references any of them.
+	 */
+	keyAttributes: string[];
 } | null => {
 	const { model, where, getFieldName, indexNameResolver, indexKeySchemaResolver } =
 		props;
@@ -34,12 +39,16 @@ export const buildKeyCondition = (props: {
 		}
 		return "AND";
 	};
-	const normalizedEntries = where.map((entry) => ({
+	const allEntries = where.map((entry) => ({
 		entry,
 		operator: normalizeWhereOperator(entry.operator),
 		fieldName: getFieldName({ model, field: entry.field }),
 		connector: resolveConnector(entry.connector),
 	}));
+	// Only these can become part of the key condition.
+	const normalizedEntries = allEntries.filter(({ entry }) =>
+		canServeAsKeyCondition(entry),
+	);
 
 	const primaryKeyEntry = normalizedEntries.find(
 		({ operator, fieldName, connector }) =>
@@ -56,6 +65,7 @@ export const buildKeyCondition = (props: {
 				":pk": primaryKeyEntry.entry.value as NativeAttributeValue,
 			},
 			remainingWhere,
+			keyAttributes: [primaryKeyName],
 		};
 	}
 
@@ -216,5 +226,58 @@ export const buildKeyCondition = (props: {
 		expressionAttributeValues,
 		indexName,
 		remainingWhere,
+		keyAttributes: [indexEntryResolved.fieldName, sortKeyName].filter(
+			(name): name is string => name !== undefined,
+		),
 	};
 };
+
+/**
+ * Pick the where entries a Query may send as its FilterExpression.
+ *
+ * Entries on a key attribute of the queried table or index are left out,
+ * because DynamoDB rejects them there; the caller evaluates the full where
+ * clause in memory afterwards. What remains is still a necessary condition:
+ * a subset of the AND group, plus the OR group only when it is complete.
+ */
+export const selectQueryFilterWhere = (props: {
+	model: string;
+	where: DynamoDBWhere[];
+	keyAttributes: string[];
+	getFieldName: (args: { model: string; field: string }) => string;
+}): DynamoDBWhere[] => {
+	const touchesKey = (entry: DynamoDBWhere): boolean =>
+		props.keyAttributes.includes(
+			props.getFieldName({ model: props.model, field: entry.field }),
+		);
+	if (!props.where.some(touchesKey)) {
+		return props.where;
+	}
+	const isOr = (entry: DynamoDBWhere): boolean =>
+		(entry.connector ?? "AND").toUpperCase() === "OR";
+	const orGroupTouchesKey = props.where
+		.filter((entry) => isOr(entry))
+		.some((entry) => touchesKey(entry));
+	return props.where.filter((entry) => {
+		if (isOr(entry)) {
+			return !orGroupTouchesKey;
+		}
+		return !touchesKey(entry);
+	});
+};
+
+/**
+ * Whether a Query for this where clause leaves entries on key attributes that
+ * cannot go into its FilterExpression.
+ */
+export const hasKeyAttributeFilter = (props: {
+	model: string;
+	where: DynamoDBWhere[];
+	keyAttributes: string[];
+	getFieldName: (args: { model: string; field: string }) => string;
+}): boolean =>
+	props.where.some((entry) =>
+		props.keyAttributes.includes(
+			props.getFieldName({ model: props.model, field: entry.field }),
+		),
+	);

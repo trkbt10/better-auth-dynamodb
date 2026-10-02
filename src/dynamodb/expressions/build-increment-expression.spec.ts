@@ -27,6 +27,22 @@ describe("resolveIncrementAssignments", () => {
 		expect(assignments).toEqual({
 			increment: { count: 1 },
 			set: { lockedUntil: null, name: "a" },
+			remove: [],
+		});
+		expect(hasIncrementAssignments(assignments)).toBe(true);
+	});
+
+	test("turns a null index key attribute into a removal", () => {
+		const assignments = resolveIncrementAssignments({
+			increment: {},
+			set: { userId: null, status: "pending", note: null },
+			indexKeyAttributes: ["userId"],
+		});
+
+		expect(assignments).toEqual({
+			increment: {},
+			set: { status: "pending", note: null },
+			remove: ["userId"],
 		});
 		expect(hasIncrementAssignments(assignments)).toBe(true);
 	});
@@ -81,7 +97,7 @@ describe("buildIncrementExpression", () => {
 	test("adds the delta inside DynamoDB for a numeric counter", () => {
 		const expression = buildIncrementExpression({
 			snapshot: { id: "u1", count: 2 },
-			assignments: { increment: { count: 3 }, set: {} },
+			assignments: { increment: { count: 3 }, set: {}, remove: [] },
 		});
 
 		expect(expression.updateExpression).toBe(
@@ -102,7 +118,7 @@ describe("buildIncrementExpression", () => {
 	test("starts an absent counter from 0", () => {
 		const expression = buildIncrementExpression({
 			snapshot: { id: "u1" },
-			assignments: { increment: { count: -1 }, set: {} },
+			assignments: { increment: { count: -1 }, set: {}, remove: [] },
 		});
 
 		expect(expression.updateExpression).toBe(
@@ -114,7 +130,7 @@ describe("buildIncrementExpression", () => {
 	test("replaces a null counter and guards the NULL type", () => {
 		const expression = buildIncrementExpression({
 			snapshot: { id: "u1", count: null },
-			assignments: { increment: { count: 4 }, set: {} },
+			assignments: { increment: { count: 4 }, set: {}, remove: [] },
 		});
 
 		expect(expression.updateExpression).toBe("SET #inc0 = :inc0");
@@ -134,6 +150,7 @@ describe("buildIncrementExpression", () => {
 			assignments: {
 				increment: { count: 1, other: 2 },
 				set: { name: "after", lockedUntil: null },
+				remove: [],
 			},
 		});
 
@@ -171,7 +188,7 @@ describe("buildIncrementExpression", () => {
 	test("emits no counter condition for a set-only payload", () => {
 		const expression = buildIncrementExpression({
 			snapshot: { id: "u1" },
-			assignments: { increment: {}, set: { status: "accepted" } },
+			assignments: { increment: {}, set: { status: "accepted" }, remove: [] },
 		});
 
 		expect(expression.updateExpression).toBe("SET #set0 = :set0");
@@ -181,11 +198,36 @@ describe("buildIncrementExpression", () => {
 		});
 	});
 
+	test("removes attributes next to the assignments, or alone", () => {
+		const mixed = buildIncrementExpression({
+			snapshot: { id: "d1", userId: "u1", status: "approved" },
+			assignments: {
+				increment: {},
+				set: { status: "pending" },
+				remove: ["userId"],
+			},
+		});
+		const alone = buildIncrementExpression({
+			snapshot: { id: "d1", userId: "u1" },
+			assignments: { increment: {}, set: {}, remove: ["userId"] },
+		});
+
+		expect(mixed.updateExpression).toBe("SET #set0 = :set0 REMOVE #rm0");
+		expect(mixed.expressionAttributeNames).toEqual({
+			"#set0": "status",
+			"#rm0": "userId",
+		});
+		expect(mixed.nextItem).toEqual({ id: "d1", status: "pending" });
+		expect(alone.updateExpression).toBe("REMOVE #rm0");
+		expect(alone.expressionAttributeValues).toEqual({});
+		expect(alone.nextItem).toEqual({ id: "d1" });
+	});
+
 	test("rejects a counter holding a non-numeric value", () => {
 		const error = captureError(() =>
 			buildIncrementExpression({
 				snapshot: { id: "u1", count: "3" },
-				assignments: { increment: { count: 1 }, set: {} },
+				assignments: { increment: { count: 1 }, set: {}, remove: [] },
 			}),
 		);
 
@@ -199,7 +241,7 @@ describe("buildIncrementExpression", () => {
 		const error = captureError(() =>
 			buildIncrementExpression({
 				snapshot: { id: "u1" },
-				assignments: { increment: {}, set: {} },
+				assignments: { increment: {}, set: {}, remove: [] },
 			}),
 		);
 

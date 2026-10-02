@@ -25,7 +25,7 @@ import {
 	createAtomicTargetResolver,
 	createContentionError,
 	resolvePinnedPrimaryKey,
-	toDynamoWhere,
+	toAtomicWhere,
 	type AtomicMethodOptions,
 	type AtomicTarget,
 } from "./atomic-write";
@@ -71,7 +71,7 @@ export const createConsumeOneMethod = (
 			config: adapterConfig,
 		});
 		const primaryKeyName = getFieldName({ model, field: "id" });
-		const dynamoWhere = toDynamoWhere(where);
+		const dynamoWhere = toAtomicWhere(where);
 
 		if (transactionState) {
 			const target = await resolveTarget({ model, where });

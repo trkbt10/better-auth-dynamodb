@@ -14,6 +14,7 @@ import {
 	normalTestSuite,
 	testAdapter,
 	transactionsTestSuite,
+	uuidTestSuite,
 } from "@better-auth/test-utils/adapter";
 import { createIndexResolversFromSchemas, dynamodbAdapter, generateTableSchemas } from "../src/index";
 import { applyTableSchemas } from "../src/apply-table-schemas";
@@ -61,50 +62,19 @@ const createAdapter = (options: BetterAuthOptions) => {
 	});
 };
 
-/**
- * Tests of the basic CRUD suite that fail on adapter behavior; shared by the
- * normal suite and the joins suite, which reuses the same test bodies.
- */
-const basicSuiteDisabledTests = {
-	// ValidationException: Invalid attribute value type (null written to the GSI key attribute nullableReference)
-	"create - should return null for nullable foreign keys": true,
-};
-
 const { execute } = await testAdapter({
 	adapter: createAdapter,
 	runMigrations,
 	prefixTests: "multi-table",
 	tests: [
-		normalTestSuite({ disableTests: basicSuiteDisabledTests }),
+		normalTestSuite(),
 		transactionsTestSuite(),
 		authFlowTestSuite(),
-		joinsTestSuite({ disableTests: basicSuiteDisabledTests }),
-		caseInsensitiveTestSuite({
-			disableTests: {
-				// expected null not to be null: mode "insensitive" is ignored
-				"findOne - eq with mode insensitive should match regardless of case": true,
-				// expected [] to have a length of 1 but got +0: mode "insensitive" is ignored
-				"findMany - eq with mode insensitive": true,
-				// expected [ …(4) ] to not include '<id>': mode "insensitive" is ignored
-				"findMany - ne with mode insensitive": true,
-				// expected [] to have a length of 1 but got +0: mode "insensitive" is ignored
-				"findMany - in with mode insensitive": true,
-				// expected [ …(3) ] to not include '<id>': mode "insensitive" is ignored
-				"findMany - not_in with mode insensitive": true,
-				// expected 0 to be greater than or equal to 1: mode "insensitive" is ignored
-				"findMany - contains with mode insensitive": true,
-				// expected 0 to be greater than or equal to 1: mode "insensitive" is ignored
-				"findMany - starts_with with mode insensitive": true,
-				// expected 0 to be greater than or equal to 1: mode "insensitive" is ignored
-				"findMany - ends_with with mode insensitive": true,
-				// expected 0 to be greater than or equal to 1: mode "insensitive" is ignored
-				"count - with mode insensitive": true,
-				// expected null not to be null: mode "insensitive" is ignored
-				"update - where with mode insensitive": true,
-				// expected { name: 'ToDelete', …(6) } to be null: mode "insensitive" is ignored
-				"deleteMany - where with mode insensitive": true,
-			},
-		}),
+		joinsTestSuite(),
+		caseInsensitiveTestSuite(),
+		// Ids stay strings: the adapter declares neither native UUID nor numeric
+		// id support, so the number-id suite does not apply.
+		uuidTestSuite(),
 	],
 	onFinish: async () => {
 		await deleteTables({ client, tableNames: [...appliedTableNames] });

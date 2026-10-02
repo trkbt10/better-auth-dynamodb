@@ -2,7 +2,15 @@
  * @file Tests for DynamoDB where-operator handlers.
  */
 import { DynamoDBAdapterError } from "../errors/errors";
-import { getOperatorHandler, isClientOnlyOperator, normalizeWhereOperator } from "./where-operator";
+import {
+	getOperatorHandler,
+	isClientOnlyOperator,
+	normalizeWhereOperator,
+	canServeAsKeyCondition,
+	evaluateWhereEntry,
+	isCaseInsensitiveComparison,
+	requiresClientEvaluation,
+} from "./where-operator";
 
 describe("getOperatorHandler", () => {
 	const captureError = (fn: () => void): unknown => {
@@ -264,5 +272,74 @@ describe("buildFilterExpression", () => {
 	test("ends_with has no buildFilterExpression", () => {
 		const handler = getOperatorHandler("ends_with");
 		expect(handler.buildFilterExpression).toBeUndefined();
+	});
+
+	test("compares with null as present-or-missing", () => {
+		const eq = getOperatorHandler("eq");
+		const ne = getOperatorHandler("ne");
+
+		expect(
+			eq.buildFilterExpression?.({
+				fieldToken: "#field",
+				value: null,
+				appendValue: createAppendValue(),
+			}),
+		).toBe("(attribute_not_exists(#field) OR #field = :v1)");
+		expect(
+			ne.buildFilterExpression?.({
+				fieldToken: "#field",
+				value: null,
+				appendValue: createAppendValue(),
+			}),
+		).toBe("(attribute_exists(#field) AND #field <> :v1)");
+		expect(eq.evaluate({ fieldValue: undefined, value: null })).toBe(true);
+		expect(eq.evaluate({ fieldValue: null, value: null })).toBe(true);
+		expect(eq.evaluate({ fieldValue: "a", value: null })).toBe(false);
+		expect(ne.evaluate({ fieldValue: undefined, value: null })).toBe(false);
+		expect(ne.evaluate({ fieldValue: null, value: null })).toBe(false);
+		expect(ne.evaluate({ fieldValue: "a", value: null })).toBe(true);
+	});
+});
+
+describe("where entry evaluation", () => {
+	test("folds case only for insensitive string comparisons", () => {
+		const insensitive = (operator: string, fieldValue: string, value: unknown) =>
+			evaluateWhereEntry({ operator, mode: "insensitive", fieldValue, value });
+
+		expect(insensitive("eq", "A@Example.COM", "a@example.com")).toBe(true);
+		expect(insensitive("ne", "A@Example.COM", "a@example.com")).toBe(false);
+		expect(insensitive("in", "Admin", ["admin", "owner"])).toBe(true);
+		expect(insensitive("not_in", "Admin", ["admin", "owner"])).toBe(false);
+		expect(insensitive("contains", "Hello World", "LO WO")).toBe(true);
+		expect(insensitive("starts_with", "Hello", "he")).toBe(true);
+		expect(insensitive("ends_with", "Hello", "LLO")).toBe(true);
+		expect(
+			evaluateWhereEntry({ operator: "eq", fieldValue: "A", value: "a" }),
+		).toBe(false);
+		expect(
+			evaluateWhereEntry({
+				operator: "eq",
+				mode: "insensitive",
+				fieldValue: 5,
+				value: 5,
+			}),
+		).toBe(true);
+	});
+
+	test("knows which entries DynamoDB cannot evaluate", () => {
+		expect(requiresClientEvaluation({ operator: "ends_with", value: "x" })).toBe(true);
+		expect(requiresClientEvaluation({ mode: "insensitive", value: "x" })).toBe(true);
+		expect(requiresClientEvaluation({ mode: "insensitive", value: 1 })).toBe(false);
+		expect(requiresClientEvaluation({ operator: "eq", value: "x" })).toBe(false);
+		expect(isCaseInsensitiveComparison({ mode: "insensitive", value: ["a"] })).toBe(true);
+		expect(isCaseInsensitiveComparison({ mode: "sensitive", value: "a" })).toBe(false);
+	});
+
+	test("knows which values can be a key condition", () => {
+		expect(canServeAsKeyCondition({ value: "u1" })).toBe(true);
+		expect(canServeAsKeyCondition({ value: null })).toBe(false);
+		expect(canServeAsKeyCondition({ value: undefined })).toBe(false);
+		expect(canServeAsKeyCondition({ value: "u1", mode: "insensitive" })).toBe(false);
+		expect(canServeAsKeyCondition({ value: ["a", "b"] })).toBe(true);
 	});
 });

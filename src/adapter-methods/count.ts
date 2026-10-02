@@ -4,6 +4,7 @@
 import type { Where } from "@better-auth/core/db/adapter";
 import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
+import { toDynamoWhere } from "../adapter/planner/normalize-where";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import { buildKeyCondition } from "../dynamodb/expressions/build-key-condition";
 import { buildFilterExpression } from "../dynamodb/expressions/build-filter-expression";
@@ -127,12 +128,7 @@ export const createCountMethod = (
 			return finalize(items.length);
 		}
 
-		const whereFilters = plan.base.where.map((entry) => ({
-			field: entry.field,
-			operator: entry.operator,
-			value: entry.value,
-			connector: entry.connector,
-		}));
+		const whereFilters = toDynamoWhere(plan.base.where);
 
 		if (plan.execution.baseStrategy.kind === "query") {
 			const keyCondition = buildKeyCondition({

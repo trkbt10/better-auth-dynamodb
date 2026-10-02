@@ -10,10 +10,12 @@ import type {
   DBAdapterDebugLogOption,
   DBAdapterFactoryConfig,
   DBAdapterSchemaCreation,
+  JoinConfig,
 } from "@better-auth/core/db/adapter";
 import { createAdapterFactory } from "@better-auth/core/db/adapter";
 import { generateSchemaCode } from "./schema-codegen";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
 import { createConsumeOneMethod } from "./adapter-methods/consume-one";
 import { createCountMethod } from "./adapter-methods/count";
@@ -27,6 +29,10 @@ import { createUpdateManyMethod } from "./adapter-methods/update-many";
 import { createUpdateMethod } from "./adapter-methods/update";
 import { createPrimaryKeyBatchLoader } from "./adapter/batching/primary-key-batch-loader";
 import { DynamoDBAdapterError } from "./dynamodb/errors/errors";
+import {
+  createIndexKeyAttributeResolver,
+  restoreNullIndexKeys,
+} from "./dynamodb/mapping/index-key-attributes";
 import { createTransactionState, executeTransaction, type DynamoDBTransactionState } from "./dynamodb/ops/transaction";
 import type { AtomicMethodOptions } from "./adapter-methods/atomic-write";
 import type { AdapterClientContainer } from "./adapter-methods/client-container";
@@ -116,6 +122,11 @@ export type ResolvedDynamoDBAdapterConfig = {
    * declares for it. Set per adapter instance, once the schema is known.
    */
   resolveSchemaModelName?: ((defaultModelName: string) => string | undefined) | undefined;
+  /**
+   * Lists the attributes of a model that are keys of a global secondary index.
+   * Set per adapter instance, once the schema is known.
+   */
+  resolveIndexKeyAttributes?: ((model: string) => string[]) | undefined;
 };
 
 const ensureDocumentClient = (documentClient: DynamoDBDocumentClient | undefined): DynamoDBDocumentClient => {
@@ -133,9 +144,51 @@ const createDynamoDbCustomizer = (props: {
   const { documentClient, transactionState } = props;
 
   return ({ getFieldName, getDefaultModelName, schema }) => {
+    const resolveIndexKeyAttributes = createIndexKeyAttributeResolver({
+      schema,
+      getDefaultModelName,
+      indexNameResolver: props.adapterConfig.indexNameResolver,
+      indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
+    });
     const adapterConfig: ResolvedDynamoDBAdapterConfig = {
       ...props.adapterConfig,
       resolveSchemaModelName: (defaultModelName) => schema[defaultModelName]?.modelName,
+      resolveIndexKeyAttributes,
+    };
+    // An index key attribute cannot hold NULL, so a null field is stored as a
+    // missing attribute. Rows handed back report it as null again.
+    const restoreRow = <T>(row: T, model: string, select?: string[] | undefined): T => {
+      if (row === null || row === undefined) {
+        return row;
+      }
+      const only = select?.map((field) => getFieldName({ model, field }));
+      return restoreNullIndexKeys(
+        row as Record<string, NativeAttributeValue>,
+        resolveIndexKeyAttributes(model),
+        only,
+      ) as T;
+    };
+    const restoreJoinedRows = (value: unknown, model: string): unknown => {
+      if (Array.isArray(value)) {
+        return value.map((row) => restoreRow(row, model));
+      }
+      return restoreRow(value, model);
+    };
+    const restoreResult = <T>(
+      row: T,
+      input: { model: string; select?: string[] | undefined; join?: JoinConfig | undefined },
+    ): T => {
+      const restored = restoreRow(row, input.model, input.select);
+      if (restored === null || restored === undefined || !input.join) {
+        return restored;
+      }
+      return Object.keys(input.join).reduce<Record<string, unknown>>(
+        (acc, joinModel) => ({
+          ...acc,
+          [joinModel]: restoreJoinedRows(acc[joinModel], joinModel),
+        }),
+        { ...(restored as Record<string, unknown>) },
+      ) as T;
     };
     const adapterClient: AdapterClientContainer = { documentClient };
     const primaryKeyLoader = createPrimaryKeyBatchLoader({
@@ -156,15 +209,24 @@ const createDynamoDbCustomizer = (props: {
     const createOptions: CreateMethodOptions = sharedOptions;
     const atomicOptions: AtomicMethodOptions = sharedOptions;
 
+    const findOne = createFindOneMethod(adapterClient, {
+      ...sharedOptions,
+      primaryKeyLoader,
+    });
+    const findMany = createFindManyMethod(adapterClient, sharedOptions);
+    const update = createUpdateMethod(adapterClient, updateOptions);
+    const consumeOne = createConsumeOneMethod(adapterClient, atomicOptions);
+    const incrementOne = createIncrementOneMethod(adapterClient, atomicOptions);
+
     return {
       create: createCreateMethod(adapterClient, createOptions),
-      findOne: createFindOneMethod(adapterClient, {
-        ...sharedOptions,
-        primaryKeyLoader,
-      }),
-      findMany: createFindManyMethod(adapterClient, sharedOptions),
+      findOne: async <T>(input: Parameters<typeof findOne>[0]) =>
+        restoreResult(await findOne<T>(input), input),
+      findMany: async <T>(input: Parameters<typeof findMany>[0]) =>
+        (await findMany<T>(input)).map((row) => restoreResult(row, input)),
       count: createCountMethod(adapterClient, countOptions),
-      update: createUpdateMethod(adapterClient, updateOptions),
+      update: async <T>(input: Parameters<typeof update>[0]) =>
+        restoreResult((await update(input)) as T | null, input),
       updateMany: createUpdateManyMethod(adapterClient, updateOptions),
       delete: createDeleteMethod(adapterClient, deleteOptions),
       deleteMany: createDeleteManyMethod(adapterClient, deleteOptions),
@@ -172,8 +234,10 @@ const createDynamoDbCustomizer = (props: {
       // through these two methods. Its fallback for adapters without them is a
       // snapshot-guarded deleteMany / updateMany, which cannot be atomic here:
       // DynamoDB only makes a write conditional inside the keyed request itself.
-      consumeOne: createConsumeOneMethod(adapterClient, atomicOptions),
-      incrementOne: createIncrementOneMethod(adapterClient, atomicOptions),
+      consumeOne: async <T>(input: Parameters<typeof consumeOne>[0]) =>
+        restoreResult(await consumeOne<T>(input), input),
+      incrementOne: async <T>(input: Parameters<typeof incrementOne>[0]) =>
+        restoreResult(await incrementOne<T>(input), input),
       createSchema: async (props: {
         file?: string;
         tables: BetterAuthDBSchema;

@@ -9,7 +9,12 @@ import type {
 	PlanConstraints,
 	ExecutionStrategy,
 } from "../query-plan";
-import { normalizeWhere } from "./normalize-where";
+import { normalizeWhere, toDynamoWhere } from "./normalize-where";
+import {
+	buildKeyCondition,
+	hasKeyAttributeFilter,
+} from "../../dynamodb/expressions/build-key-condition";
+import type { DynamoDBWhere } from "../../dynamodb/types";
 import { resolveBaseStrategy } from "./resolve-strategy";
 import { resolveJoinPlan } from "./resolve-join-plan";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
@@ -29,6 +34,66 @@ const resolveConstraints = (props: {
 		hasClientOnlyOperator,
 		requiresSelectSupplement: props.requiresSelectSupplement,
 	};
+};
+
+// A multi-query runs one Query per value of an IN list; each of them sees the
+// IN entry as an equality on that value.
+const toSingleQueryWhere = (props: {
+	where: DynamoDBWhere[];
+	strategy: ExecutionStrategy;
+}): DynamoDBWhere[] => {
+	const strategy = props.strategy;
+	if (strategy.kind !== "multi-query") {
+		return props.where;
+	}
+	return props.where.map((entry) => {
+		if (entry.field !== strategy.field || entry.operator !== "in") {
+			return entry;
+		}
+		if (!Array.isArray(entry.value)) {
+			return entry;
+		}
+		return { ...entry, operator: "eq", value: entry.value[0] };
+	});
+};
+
+/**
+ * A Query cannot filter on the key attributes of the table or index it runs
+ * on. Where entries on those attributes that are not part of the key condition
+ * (a repeated key, a range on the sort key) are evaluated in memory instead.
+ */
+const resolveKeyAttributeFilter = (props: {
+	model: string;
+	where: ReturnType<typeof normalizeWhere>;
+	strategy: ExecutionStrategy;
+	getFieldName: (args: { model: string; field: string }) => string;
+	adapterConfig: Pick<
+		DynamoDBAdapterConfig,
+		"indexNameResolver" | "indexKeySchemaResolver"
+	>;
+}): boolean => {
+	if (props.strategy.kind !== "query" && props.strategy.kind !== "multi-query") {
+		return false;
+	}
+	const keyCondition = buildKeyCondition({
+		model: props.model,
+		where: toSingleQueryWhere({
+			where: toDynamoWhere(props.where),
+			strategy: props.strategy,
+		}),
+		getFieldName: props.getFieldName,
+		indexNameResolver: props.adapterConfig.indexNameResolver,
+		indexKeySchemaResolver: props.adapterConfig.indexKeySchemaResolver,
+	});
+	if (!keyCondition) {
+		return false;
+	}
+	return hasKeyAttributeFilter({
+		model: props.model,
+		where: keyCondition.remainingWhere,
+		keyAttributes: keyCondition.keyAttributes,
+		getFieldName: props.getFieldName,
+	});
 };
 
 const resolveFetchLimit = (props: {
@@ -201,7 +266,19 @@ export const buildQueryPlan = (props: {
 		},
 		{},
 	);
-	const requiresClientFilter = constraints.hasClientOnlyOperator;
+	const resolveRequiresClientFilter = (): boolean => {
+		if (constraints.hasClientOnlyOperator) {
+			return true;
+		}
+		return resolveKeyAttributeFilter({
+			model: props.model,
+			where: normalizedWhere,
+			strategy: baseStrategy,
+			getFieldName: props.getFieldName,
+			adapterConfig: props.adapterConfig,
+		});
+	};
+	const requiresClientFilter = resolveRequiresClientFilter();
 	const normalizedSort = resolveNormalizedSort({
 		sortBy: props.sortBy,
 		getFieldName: props.getFieldName,

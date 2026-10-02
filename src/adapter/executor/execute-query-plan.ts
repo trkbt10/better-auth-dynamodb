@@ -11,7 +11,10 @@ import { applyClientFilter } from "./apply-client-filter";
 import { applySort } from "./apply-sort";
 import { applySelect } from "./apply-select";
 import { executeJoin } from "./execute-join";
-import { buildKeyCondition } from "../../dynamodb/expressions/build-key-condition";
+import {
+	buildKeyCondition,
+	selectQueryFilterWhere,
+} from "../../dynamodb/expressions/build-key-condition";
 import { buildFilterExpression } from "../../dynamodb/expressions/build-filter-expression";
 import { queryItems } from "../../dynamodb/ops/query";
 import { scanItems } from "../../dynamodb/ops/scan";
@@ -25,6 +28,7 @@ import {
 	type DynamoDBTransactionState,
 } from "../../dynamodb/ops/transaction";
 import { applyWhereFilters } from "./where-evaluator";
+import { toDynamoWhere } from "../planner/normalize-where";
 
 export type AdapterExecutionContext = {
 	operationStats?: DynamoDBOperationStatsCollector | undefined;
@@ -87,14 +91,6 @@ const resolveScanMaxPages = (props: {
 	}
 	return props.adapterConfig.scanMaxPages;
 };
-
-const toDynamoWhere = (where: NormalizedWhere[]): DynamoDBWhere[] =>
-	where.map((entry) => ({
-		field: entry.field,
-		operator: entry.operator,
-		value: entry.value,
-		connector: entry.connector,
-	}));
 
 const resolvePrimaryKeyValues = (props: {
 	where: NormalizedWhere[];
@@ -187,7 +183,12 @@ const fetchBaseItems = async (props: {
 				}
 				const filter = buildFilterExpression({
 					model: baseModel,
-					where: keyCondition.remainingWhere,
+					where: selectQueryFilterWhere({
+						model: baseModel,
+						where: keyCondition.remainingWhere,
+						keyAttributes: keyCondition.keyAttributes,
+						getFieldName: props.getFieldName,
+					}),
 					getFieldName: props.getFieldName,
 				});
 					return (await queryItems({
@@ -229,7 +230,12 @@ const fetchBaseItems = async (props: {
 		}
 		const filter = buildFilterExpression({
 			model: props.plan.base.model,
-			where: keyCondition.remainingWhere,
+			where: selectQueryFilterWhere({
+				model: props.plan.base.model,
+				where: keyCondition.remainingWhere,
+				keyAttributes: keyCondition.keyAttributes,
+				getFieldName: props.getFieldName,
+			}),
 			getFieldName: props.getFieldName,
 		});
 		const indexName = resolveIndexName({

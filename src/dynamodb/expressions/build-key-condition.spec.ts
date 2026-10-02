@@ -2,7 +2,11 @@
  * @file Tests for key condition builder.
  */
 import type { DynamoDBWhere } from "../types";
-import { buildKeyCondition } from "./build-key-condition";
+import {
+	buildKeyCondition,
+	hasKeyAttributeFilter,
+	selectQueryFilterWhere,
+} from "./build-key-condition";
 
 describe("buildKeyCondition", () => {
 	const getFieldName = (props: { model: string; field: string }) => props.field;
@@ -43,6 +47,7 @@ describe("buildKeyCondition", () => {
 			remainingWhere: [
 				{ field: "email", operator: "eq", value: "a@example.com" },
 			],
+			keyAttributes: ["id"],
 		});
 	});
 
@@ -63,6 +68,7 @@ describe("buildKeyCondition", () => {
 			expressionAttributeValues: { ":pk": "a@example.com" },
 			indexName: "user_email_index",
 			remainingWhere: [],
+			keyAttributes: ["email"],
 		});
 	});
 
@@ -104,6 +110,7 @@ describe("buildKeyCondition", () => {
 			},
 			indexName: "account_providerId_accountId_idx",
 			remainingWhere: [],
+			keyAttributes: ["providerId", "accountId"],
 		});
 	});
 
@@ -148,6 +155,7 @@ describe("buildKeyCondition", () => {
 			},
 			indexName: "account_providerId_accountId_idx",
 			remainingWhere: [],
+			keyAttributes: ["providerId", "accountId"],
 		});
 	});
 
@@ -180,6 +188,67 @@ describe("buildKeyCondition", () => {
 						connector: "OR",
 					},
 				],
+				keyAttributes: ["id"],
 			});
 		});
+		test("does not use a null or case-insensitive entry as the key condition", () => {
+		const byNull = buildKeyCondition({
+			model: "user",
+			where: [{ field: "email", operator: "eq", value: null }],
+			getFieldName,
+			indexNameResolver,
+		});
+		const insensitive = buildKeyCondition({
+			model: "user",
+			where: [
+				{ field: "id", operator: "eq", value: "User-1", mode: "insensitive" },
+			],
+			getFieldName,
+			indexNameResolver,
+		});
+
+		expect(byNull).toBeNull();
+		expect(insensitive).toBeNull();
 	});
+
+	test("keeps key attributes out of the query filter", () => {
+		const keyAttributes = ["identifier", "createdAt"];
+		const select = (where: DynamoDBWhere[]) =>
+			selectQueryFilterWhere({
+				model: "verification",
+				where,
+				keyAttributes,
+				getFieldName,
+			});
+		const value: DynamoDBWhere = { field: "value", operator: "eq", value: "v" };
+		const range: DynamoDBWhere = { field: "createdAt", operator: "gt", value: "2024" };
+		const orValue: DynamoDBWhere = { ...value, connector: "OR" };
+		const orKey: DynamoDBWhere = {
+			field: "identifier",
+			operator: "eq",
+			value: "other",
+			connector: "OR",
+		};
+
+		expect(select([value, orValue])).toEqual([value, orValue]);
+		expect(select([value, range])).toEqual([value]);
+		expect(select([value, range, orValue])).toEqual([value, orValue]);
+		expect(select([value, orValue, orKey])).toEqual([value]);
+		expect(
+			hasKeyAttributeFilter({
+				model: "verification",
+				where: [value, range],
+				keyAttributes,
+				getFieldName,
+			}),
+		).toBe(true);
+		expect(
+			hasKeyAttributeFilter({
+				model: "verification",
+				where: [value],
+				keyAttributes,
+				getFieldName,
+			}),
+		).toBe(false);
+	});
+});

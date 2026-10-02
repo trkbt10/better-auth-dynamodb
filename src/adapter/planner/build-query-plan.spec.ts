@@ -112,4 +112,58 @@ describe("buildQueryPlan", () => {
 		});
 		expect(plan.execution.requiresClientSort).toBe(false);
 	});
+	it("filters in memory when the where clause names a key attribute again", () => {
+		const plan = (where: Parameters<typeof buildQueryPlan>[0]["where"]) =>
+			buildQueryPlan({
+				model: "verification",
+				where,
+				limit: 1,
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+			}).execution;
+
+		const sortKeyRange = plan([
+			{ field: "identifier", value: "x" },
+			{ field: "createdAt", operator: "gt", value: "2024" },
+		]);
+		const repeatedKey = plan([
+			{ field: "id", value: "a" },
+			{ field: "id", value: "a" },
+		]);
+		const plain = plan([
+			{ field: "identifier", value: "x" },
+			{ field: "value", value: "v" },
+		]);
+
+		expect(sortKeyRange).toMatchObject({
+			baseStrategy: { kind: "query", key: "gsi" },
+			requiresClientFilter: true,
+			fetchLimit: undefined,
+		});
+		expect(repeatedKey).toMatchObject({
+			baseStrategy: { kind: "query", key: "pk" },
+			requiresClientFilter: true,
+			fetchLimit: undefined,
+		});
+		expect(plain).toMatchObject({ requiresClientFilter: false, fetchLimit: 1 });
+	});
+
+	it("does not plan a key lookup for a null or case-insensitive value", () => {
+		const strategy = (where: Parameters<typeof buildQueryPlan>[0]["where"]) =>
+			buildQueryPlan({
+				model: "verification",
+				where,
+				getFieldName: helpers.getFieldName,
+				adapterConfig: { indexNameResolver, indexKeySchemaResolver },
+			}).execution.baseStrategy;
+
+		expect(strategy([{ field: "identifier", value: null }])).toEqual({ kind: "scan" });
+		expect(
+			strategy([{ field: "identifier", value: "X", mode: "insensitive" }]),
+		).toEqual({ kind: "scan" });
+		expect(strategy([{ field: "identifier", value: "x" }])).toMatchObject({
+			kind: "query",
+			key: "gsi",
+		});
+	});
 });

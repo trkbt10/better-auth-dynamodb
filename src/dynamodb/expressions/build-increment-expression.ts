@@ -14,6 +14,11 @@ import { DynamoDBAdapterError } from "../errors/errors";
 export type IncrementAssignments = {
 	increment: Record<string, number>;
 	set: Record<string, NativeAttributeValue>;
+	/**
+	 * Attributes to remove: index key attributes that are set to null, which
+	 * DynamoDB cannot store in them.
+	 */
+	remove: string[];
 };
 
 export type IncrementExpression = {
@@ -51,15 +56,28 @@ const NULL_TYPE_TOKEN = ":nullType";
 export const resolveIncrementAssignments = (props: {
 	increment: Record<string, number>;
 	set?: Record<string, unknown> | undefined;
+	indexKeyAttributes?: string[] | undefined;
 }): IncrementAssignments => {
-	const set = Object.entries(props.set ?? {}).reduce<
-		Record<string, NativeAttributeValue>
-	>((acc, [field, value]) => {
-		if (value === undefined) {
-			return acc;
+	const indexKeyAttributes = props.indexKeyAttributes ?? [];
+	const assigned = Object.entries(props.set ?? {}).filter(
+		([, value]) => value !== undefined,
+	);
+	const isRemoval = ([field, value]: [string, unknown]): boolean => {
+		if (value !== null) {
+			return false;
 		}
-		return { ...acc, [field]: value as NativeAttributeValue };
-	}, {});
+		return indexKeyAttributes.includes(field);
+	};
+	const remove = assigned.filter(isRemoval).map(([field]) => field);
+	const set = assigned
+		.filter((entry) => !isRemoval(entry))
+		.reduce<Record<string, NativeAttributeValue>>(
+			(acc, [field, value]) => ({
+				...acc,
+				[field]: value as NativeAttributeValue,
+			}),
+			{},
+		);
 
 	for (const [field, delta] of Object.entries(props.increment)) {
 		if (typeof delta !== "number" || !Number.isFinite(delta)) {
@@ -68,7 +86,7 @@ export const resolveIncrementAssignments = (props: {
 				`incrementOne requires a finite numeric delta for "${field}".`,
 			);
 		}
-		if (field in set) {
+		if (field in set || remove.includes(field)) {
 			throw new DynamoDBAdapterError(
 				"INVALID_UPDATE",
 				`incrementOne cannot both increment and set "${field}".`,
@@ -76,7 +94,7 @@ export const resolveIncrementAssignments = (props: {
 		}
 	}
 
-	return { increment: { ...props.increment }, set };
+	return { increment: { ...props.increment }, set, remove };
 };
 
 const buildCounterFragment = (props: {
@@ -144,7 +162,8 @@ export const hasIncrementAssignments = (
 	assignments: IncrementAssignments,
 ): boolean =>
 	Object.keys(assignments.increment).length > 0 ||
-	Object.keys(assignments.set).length > 0;
+	Object.keys(assignments.set).length > 0 ||
+	assignments.remove.length > 0;
 
 export const buildIncrementExpression = (props: {
 	snapshot: Record<string, NativeAttributeValue>;
@@ -172,16 +191,31 @@ export const buildIncrementExpression = (props: {
 		),
 	];
 
+	const removeTokens = props.assignments.remove.map((field, index) => ({
+		token: `#rm${index}`,
+		field,
+	}));
+	const clauses = [
+		{ keyword: "SET", parts: fragments.map((fragment) => fragment.assignment) },
+		{ keyword: "REMOVE", parts: removeTokens.map((entry) => entry.token) },
+	].filter((clause) => clause.parts.length > 0);
+	const withoutRemoved = (item: Record<string, NativeAttributeValue>) =>
+		Object.fromEntries(
+			Object.entries(item).filter(
+				([field]) => !props.assignments.remove.includes(field),
+			),
+		);
+
 	return {
-		updateExpression: `SET ${fragments
-			.map((fragment) => fragment.assignment)
-			.join(", ")}`,
+		updateExpression: clauses
+			.map((clause) => `${clause.keyword} ${clause.parts.join(", ")}`)
+			.join(" "),
 		counterConditions: fragments
 			.map((fragment) => fragment.condition)
 			.filter((condition): condition is string => condition !== undefined),
 		expressionAttributeNames: fragments.reduce<Record<string, string>>(
 			(acc, fragment) => ({ ...acc, ...fragment.expressionAttributeNames }),
-			{},
+			Object.fromEntries(removeTokens.map((entry) => [entry.token, entry.field])),
 		),
 		expressionAttributeValues: fragments.reduce<
 			Record<string, NativeAttributeValue>
@@ -191,7 +225,7 @@ export const buildIncrementExpression = (props: {
 		),
 		nextItem: fragments.reduce<Record<string, NativeAttributeValue>>(
 			(acc, fragment) => ({ ...acc, [fragment.field]: fragment.nextValue }),
-			{ ...props.snapshot },
+			withoutRemoved(props.snapshot),
 		),
 	};
 };

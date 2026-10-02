@@ -4,6 +4,7 @@
 import type { NormalizedWhere, ExecutionStrategy } from "../query-plan";
 import type { DynamoDBAdapterConfig } from "../../adapter";
 import { DynamoDBAdapterError } from "../../dynamodb/errors/errors";
+import { canServeAsKeyCondition } from "../../dynamodb/expressions/where-operator";
 
 const resolvePrimaryKeyName = (props: {
 	model: string;
@@ -120,7 +121,12 @@ export const resolveBaseStrategy = (props: {
 			"resolveBaseStrategy requires explicit props.",
 		);
 	}
-	const andWhere = props.where.filter((entry) => entry.connector === "AND");
+	const andWhere = props.where.filter((entry) => {
+		if (entry.connector !== "AND") {
+			return false;
+		}
+		return canServeAsKeyCondition(entry);
+	});
 
 	const primaryKeyName = resolvePrimaryKeyName({
 		model: props.model,

@@ -25,8 +25,34 @@ describe("normalizeWhere", () => {
 				operator: "eq",
 				value: "test@example.com",
 				connector: "AND",
+				mode: "sensitive",
 				requiresClientFilter: false,
 			},
+		]);
+	});
+
+	test("evaluates case-insensitive string comparisons in memory", () => {
+		const result = normalizeWhere({
+			where: [
+				{ field: "email", value: "A@Example.com", mode: "insensitive" },
+				{
+					field: "role",
+					operator: "in",
+					value: ["Admin", "Owner"],
+					mode: "insensitive",
+				},
+				{ field: "age", value: 3, mode: "insensitive" },
+				{ field: "name", value: null, mode: "insensitive" },
+			],
+		});
+
+		expect(
+			result.map((entry) => [entry.field, entry.mode, entry.requiresClientFilter]),
+		).toEqual([
+			["email", "insensitive", true],
+			["role", "insensitive", true],
+			["age", "sensitive", false],
+			["name", "sensitive", false],
 		]);
 	});
 
