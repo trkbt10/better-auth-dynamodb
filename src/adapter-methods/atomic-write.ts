@@ -134,6 +134,11 @@ export const buildConditionInput = (
 	return { ...input, ExpressionAttributeValues: expressionAttributeValues };
 };
 
+// Key values are compared by a token of their type and text, so a value that
+// is a new object on every read (a binary key) still equals itself.
+const toKeyToken = (value: NativeAttributeValue): string =>
+	`${typeof value}:${String(value)}`;
+
 export const createContentionError = (method: string): DynamoDBAdapterError =>
 	new DynamoDBAdapterError(
 		"ATOMIC_WRITE_CONTENTION",
@@ -226,7 +231,7 @@ export const createAtomicRowReader = (
 	const findCandidate = async (props: {
 		model: string;
 		where: Where[];
-		excludedKeyValues: NativeAttributeValue[];
+		excludedKeyValues: string[];
 	}): Promise<AtomicTarget | null> => {
 		const primaryKeyName = getFieldName({ model: props.model, field: "id" });
 		const plan = buildQueryPlan({
@@ -242,7 +247,8 @@ export const createAtomicRowReader = (
 		});
 		const items = await executePlan(plan);
 		const candidate = items.find(
-			(item) => !props.excludedKeyValues.includes(item[primaryKeyName]),
+			(item) =>
+				!props.excludedKeyValues.includes(toKeyToken(item[primaryKeyName])),
 		);
 		if (!candidate) {
 			return null;
@@ -277,28 +283,67 @@ export const createAtomicRowReader = (
 
 export type AtomicRowReader = ReturnType<typeof createAtomicRowReader>;
 
+type WriteAttempt =
+	| { outcome: "written"; row: DynamoDBItem }
+	| { outcome: "failed" }
+	| { outcome: "rejected"; error: unknown };
+
+const isInvalidUpdate = (error: unknown): boolean => {
+	if (!(error instanceof DynamoDBAdapterError)) {
+		return false;
+	}
+	return error.code === "INVALID_UPDATE";
+};
+
+// A write can be refused before it is sent because of what the row holds (a
+// counter that is not a number). That verdict is only final for a row that
+// was read consistently; for a stale candidate it is checked again.
+const attemptWrite = async (
+	write: (target: AtomicTarget) => Promise<ConditionalWriteResult>,
+	target: AtomicTarget,
+): Promise<WriteAttempt> => {
+	try {
+		const result = await write(target);
+		if (result.applied && result.attributes) {
+			return { outcome: "written", row: result.attributes };
+		}
+		return { outcome: "failed" };
+	} catch (error) {
+		if (isInvalidUpdate(error)) {
+			return { outcome: "rejected", error };
+		}
+		throw error;
+	}
+};
+
 /**
  * Write to one row until the write is applied or the row stops matching.
  * Returns the row the write reports, or `null` when a strongly consistent
  * read shows that the row is gone or no longer matches the where clause.
+ * `verified` says whether `target` already comes from such a read.
  */
 const settleOnRow = async (props: {
 	method: string;
 	target: AtomicTarget;
+	verified: boolean;
 	write: (target: AtomicTarget) => Promise<ConditionalWriteResult>;
 	reread: () => Promise<AtomicTarget | null>;
 }): Promise<DynamoDBItem | null> => {
-	const state = { target: props.target };
+	const state = { target: props.target, verified: props.verified };
 	for (let attempt = 0; attempt < MAX_ATOMIC_WRITE_ATTEMPTS; attempt += 1) {
-		const result = await props.write(state.target);
-		if (result.applied && result.attributes) {
-			return result.attributes;
+		const result = await attemptWrite(props.write, state.target);
+		if (result.outcome === "written") {
+			return result.row;
+		}
+		if (result.outcome === "rejected" && state.verified) {
+			throw result.error;
 		}
 		const fresh = await props.reread();
 		if (!fresh) {
 			return null;
 		}
 		state.target = fresh;
+		state.verified = true;
 	}
 	throw createContentionError(props.method);
 };
@@ -327,10 +372,16 @@ export const settleAtomicWrite = async (props: {
 		if (!target) {
 			return null;
 		}
-		return settleOnRow({ method: props.method, target, write: props.write, reread });
+		return settleOnRow({
+			method: props.method,
+			target,
+			verified: true,
+			write: props.write,
+			reread,
+		});
 	}
 
-	const excludedKeyValues: NativeAttributeValue[] = [];
+	const excludedKeyValues: string[] = [];
 	for (;;) {
 		const candidate = await reader.findCandidate({
 			model,
@@ -344,12 +395,13 @@ export const settleAtomicWrite = async (props: {
 		const row = await settleOnRow({
 			method: props.method,
 			target: candidate,
+			verified: false,
 			write: props.write,
 			reread: () => reader.readMatchingRow({ model, where, keyValue }),
 		});
 		if (row) {
 			return row;
 		}
-		excludedKeyValues.push(keyValue);
+		excludedKeyValues.push(toKeyToken(keyValue));
 	}
 };

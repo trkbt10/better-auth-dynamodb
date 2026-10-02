@@ -10,7 +10,7 @@
  *
  * The request shapes the adapter emits are produced with the adapter's own
  * builders (`buildFilterExpression`, `buildAtomicCondition`,
- * `buildIncrementExpression`, `buildPatchUpdateExpression`,
+ * `buildIncrementExpression`, `buildUpdateExpression`,
  * `executeTransaction`), so the fake is proven on exactly those shapes.
  */
 import { DescribeTableCommand } from "@aws-sdk/client-dynamodb";
@@ -41,7 +41,7 @@ import {
 	buildIncrementExpression,
 	resolveIncrementAssignments,
 } from "../src/dynamodb/expressions/build-increment-expression";
-import { buildPatchUpdateExpression } from "../src/dynamodb/expressions/build-patch-update-expression";
+import { buildUpdateExpression } from "../src/dynamodb/expressions/build-update-expression";
 import {
 	bufferTransactionCreate,
 	bufferTransactionWrite,
@@ -1223,27 +1223,32 @@ const UPDATE_SCENARIOS: Scenario[] = [
 	),
 ];
 
-// Update expressions exactly as the adapter's buildPatchUpdateExpression
-// emits them for update / updateMany.
+// Update expressions exactly as the adapter's buildUpdateExpression emits
+// them for update / updateMany: every assigned attribute as a whole value,
+// `undefined` as a removal, guarded by the existence of the row.
 const patchScenario = (
 	name: string,
-	prev: Item,
-	next: Item,
+	stored: Item,
+	assignments: Record<string, unknown>,
 	expected: ExpectedOutcome = "ok",
 ): Scenario => {
-	const patch = buildPatchUpdateExpression({ prev, next });
+	const update = buildUpdateExpression(assignments as Parameters<typeof buildUpdateExpression>[0]);
+	const values = update.expressionAttributeValues;
+	// The adapter leaves out an empty value map, which DynamoDB rejects.
+	const valueInput = Object.keys(values).length > 0 ? { ExpressionAttributeValues: values } : {};
 	return {
-		name: `adapter patch update: ${name} (${patch.updateExpression})`,
-		seed: { items: [prev] },
+		name: `adapter update: ${name} (${update.updateExpression})`,
+		seed: { items: [stored] },
 		steps: [
 			send(
 				(tables) =>
 					new UpdateCommand({
 						TableName: tables.items,
-						Key: { id: prev.id },
-						UpdateExpression: patch.updateExpression,
-						ExpressionAttributeNames: patch.expressionAttributeNames,
-						ExpressionAttributeValues: patch.expressionAttributeValues,
+						Key: { id: "p1" },
+						UpdateExpression: update.updateExpression,
+						ConditionExpression: "attribute_exists(#pk)",
+						ExpressionAttributeNames: { ...update.expressionAttributeNames, "#pk": "id" },
+						...valueInput,
 						ReturnValues: "ALL_NEW",
 					}),
 			),
@@ -1254,28 +1259,31 @@ const patchScenario = (
 
 const PATCH_SCENARIOS: Scenario[] = [
 	patchScenario(
-		"scalar changes, a removal, and a number delta",
+		"scalars and a removal",
 		{ id: "p1", name: "a", count: 1, gone: "x", flag: false },
-		{ id: "p1", name: "b", count: 4, flag: true },
+		{ name: "b", count: 4, gone: undefined, flag: true },
 	),
 	patchScenario(
-		"nested map changes",
-		{ id: "p2", meta: { a: 1, b: { c: "x", d: "y" } } },
-		{ id: "p2", meta: { a: 1, b: { c: "z" }, e: "new" } },
+		"a map is assigned as a whole",
+		{ id: "p1", meta: { a: 1, b: { c: "x", d: "y" } } },
+		{ meta: { a: 1, b: { c: "z" }, e: "new" } },
 	),
-	// A removal-only patch has no values, and `ExpressionAttributeValues: {}`
-	// is rejected by DynamoDB ("ExpressionAttributeValues must not be empty").
+	patchScenario("a removal only", { id: "p1", tags: ["a", "b", "c"] }, { tags: undefined }),
+	patchScenario("a removal of an attribute that is not there", { id: "p1" }, { tags: undefined }),
+	patchScenario("a list is assigned as a whole", { id: "p1", tags: ["a", "b", "c"] }, { tags: ["x", "b"] }),
 	patchScenario(
-		"a removal-only patch sends an empty ExpressionAttributeValues map",
-		{ id: "p3", tags: ["a", "b", "c"] },
-		{ id: "p3", tags: ["a"] },
-		"ValidationException",
+		"a string and a number that look alike",
+		{ id: "p1", name: "Alice", count: 0 },
+		{ name: "5", count: 5 },
 	),
-	patchScenario("an array that grows", { id: "p4", tags: ["a"] }, { id: "p4", tags: ["a", "b", "c"] }),
-	patchScenario("an array element changes and the array shrinks", { id: "p5", tags: ["a", "b", "c"] }, { id: "p5", tags: ["x", "b"] }),
-	patchScenario("numbers inside an array", { id: "p6", scores: [1, 2] }, { id: "p6", scores: [3, 2] }),
-	patchScenario("a value replaced by another type", { id: "p7", v: "1", w: null }, { id: "p7", v: 1, w: { x: 1 } }),
-	patchScenario("a new attribute", { id: "p8" }, { id: "p8", fresh: "v", list: [1], map: { k: "v" } }),
+	patchScenario("a value replaced by another type", { id: "p1", v: "1", w: null }, { v: 1, w: { x: 1 } }),
+	patchScenario("new attributes and null", { id: "p1" }, { fresh: "v", list: [1], map: { k: "v" }, nothing: null }),
+	patchScenario(
+		"a row that does not exist is not created",
+		{ id: "other", name: "a" },
+		{ name: "b" },
+		"ConditionalCheckFailedException",
+	),
 ];
 
 // ---------------------------------------------------------------------------
@@ -2611,6 +2619,7 @@ const TRANSACTION_SCENARIOS: Scenario[] = [
 				keyField: "id",
 				row: TRANSACTION_SEED[0],
 				next: { ...TRANSACTION_SEED[0], v: 6, gs: "b" },
+				assignedFields: ["v", "gs"],
 			});
 			pinTransactionFields(incremented, ["v"]);
 			bufferTransactionCreate(state, {
@@ -2692,6 +2701,23 @@ const TRANSACTION_SCENARIOS: Scenario[] = [
 		"TransactionCanceledException",
 	),
 	transactionScenario(
+		"adapter executeTransaction: a row deleted and created again is replaced",
+		transaction((state, tables) => {
+			bufferTransactionWrite(state, {
+				tableName: tables.items,
+				keyField: "id",
+				row: TRANSACTION_SEED[0],
+				next: null,
+			});
+			bufferTransactionCreate(state, {
+				tableName: tables.items,
+				keyField: "id",
+				item: { id: "1", v: 9 },
+			});
+		}),
+		"ok",
+	),
+	transactionScenario(
 		"adapter executeTransaction: updating a row that no longer exists cancels the transaction",
 		transaction((state, tables) => {
 			bufferTransactionWrite(state, {
@@ -2699,6 +2725,7 @@ const TRANSACTION_SCENARIOS: Scenario[] = [
 				keyField: "id",
 				row: { id: "gone", v: 1 },
 				next: { id: "gone", v: 2 },
+				assignedFields: ["v"],
 			});
 		}),
 		"TransactionCanceledException",

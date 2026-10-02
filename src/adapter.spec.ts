@@ -138,16 +138,16 @@ describe("dynamodbAdapter", () => {
 				Update: {
 					TableName: "auth_user",
 					Key: { id: "user_1" },
-					UpdateExpression: "SET #a0 = :v0,#a1 = :v1",
+					UpdateExpression: "SET #u0 = :u0, #u1 = :u1",
 					ConditionExpression: "attribute_exists(#pk)",
 					ExpressionAttributeNames: {
-						"#a0": "name",
-						"#a1": "updatedAt",
+						"#u0": "name",
+						"#u1": "updatedAt",
 						"#pk": "id",
 					},
 					ExpressionAttributeValues: {
-						":v0": "updated twice",
-						":v1": expect.any(String),
+						":u0": "updated twice",
+						":u1": expect.any(String),
 					},
 				},
 			},

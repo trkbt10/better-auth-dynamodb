@@ -181,7 +181,7 @@ describe("transaction helpers", () => {
 		]);
 	});
 
-	test("updates a stored row with the difference to its final image", async () => {
+	test("writes the assigned attributes of a stored row from its final image", async () => {
 		const state = createTransactionState();
 		const stored = { id: "user-1", name: "a", nickname: "x", visits: 1 };
 		bufferTransactionWrite(state, {
@@ -189,27 +189,30 @@ describe("transaction helpers", () => {
 			keyField: "id",
 			row: stored,
 			next: { ...stored, name: "b" },
+			assignedFields: ["name"],
 		});
 		bufferTransactionWrite(state, {
 			tableName: "users",
 			keyField: "id",
 			row: { ...stored, name: "b" },
 			next: { id: "user-1", name: "c", visits: 1 },
+			assignedFields: ["name", "nickname"],
 		});
 
+		// `visits` was not assigned and is not written, whatever the row holds.
 		expect(await committedItems(state)).toEqual([
 			{
 				Update: {
 					TableName: "users",
 					Key: { id: "user-1" },
-					UpdateExpression: "SET #a0 = :v0 REMOVE #a1",
+					UpdateExpression: "SET #u0 = :u0 REMOVE #u1",
 					ConditionExpression: "attribute_exists(#pk)",
 					ExpressionAttributeNames: {
-						"#a0": "name",
-						"#a1": "nickname",
+						"#u0": "name",
+						"#u1": "nickname",
 						"#pk": "id",
 					},
-					ExpressionAttributeValues: { ":v0": "c" },
+					ExpressionAttributeValues: { ":u0": "c" },
 				},
 			},
 		]);
@@ -222,6 +225,7 @@ describe("transaction helpers", () => {
 			keyField: "id",
 			row: { id: "user-1", nickname: "x" },
 			next: { id: "user-1" },
+			assignedFields: ["nickname"],
 		});
 
 		expect(await committedItems(state)).toEqual([
@@ -229,9 +233,9 @@ describe("transaction helpers", () => {
 				Update: {
 					TableName: "users",
 					Key: { id: "user-1" },
-					UpdateExpression: "REMOVE #a0",
+					UpdateExpression: "REMOVE #u0",
 					ConditionExpression: "attribute_exists(#pk)",
-					ExpressionAttributeNames: { "#a0": "nickname", "#pk": "id" },
+					ExpressionAttributeNames: { "#u0": "nickname", "#pk": "id" },
 				},
 			},
 		]);
@@ -245,6 +249,7 @@ describe("transaction helpers", () => {
 			keyField: "id",
 			row: stored,
 			next: { id: "user-1", name: "b" },
+			assignedFields: ["name"],
 		});
 		bufferTransactionWrite(state, {
 			tableName: "users",
@@ -282,6 +287,7 @@ describe("transaction helpers", () => {
 			keyField: "id",
 			row: counter,
 			next: { id: "t1", memberCount: 3 },
+			assignedFields: ["memberCount"],
 		});
 		pinTransactionFields(incremented, ["memberCount"]);
 
@@ -310,14 +316,14 @@ describe("transaction helpers", () => {
 				Update: {
 					TableName: "team",
 					Key: { id: "t1" },
-					UpdateExpression: "SET #a0 = :v0",
+					UpdateExpression: "SET #u0 = :u0",
 					ConditionExpression: "attribute_exists(#pk) AND #pin0 = :pin0",
 					ExpressionAttributeNames: {
-						"#a0": "memberCount",
+						"#u0": "memberCount",
 						"#pk": "id",
 						"#pin0": "memberCount",
 					},
-					ExpressionAttributeValues: { ":v0": 3, ":pin0": 2 },
+					ExpressionAttributeValues: { ":u0": 3, ":pin0": 2 },
 				},
 			},
 		]);
@@ -353,7 +359,7 @@ describe("transaction helpers", () => {
 		]);
 	});
 
-	test("re-creates a row the transaction deleted as an update of the stored row", async () => {
+	test("replaces a stored row the transaction deleted and created again", async () => {
 		const state = createTransactionState();
 		bufferTransactionWrite(state, {
 			tableName: "users",
@@ -369,17 +375,11 @@ describe("transaction helpers", () => {
 
 		expect(await committedItems(state)).toEqual([
 			{
-				Update: {
+				Put: {
 					TableName: "users",
-					Key: { id: "user-1" },
-					UpdateExpression: "SET #a0 = :v0 REMOVE #a1",
+					Item: { id: "user-1", name: "b" },
 					ConditionExpression: "attribute_exists(#pk)",
-					ExpressionAttributeNames: {
-						"#a0": "name",
-						"#a1": "nickname",
-						"#pk": "id",
-					},
-					ExpressionAttributeValues: { ":v0": "b" },
+					ExpressionAttributeNames: { "#pk": "id" },
 				},
 			},
 		]);

@@ -365,6 +365,8 @@ describe("createConsumeOneMethod", () => {
 				base: { id: "v1", value: "secret" },
 				current: null,
 				pinnedFields: ["id", "value"],
+				assignedFields: [],
+				replaced: false,
 			},
 		]);
 	});

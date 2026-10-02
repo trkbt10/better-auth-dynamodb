@@ -33,6 +33,8 @@ const options: BetterAuthOptions = {
 		additionalFields: {
 			loginCount: { type: "number", required: false },
 			nickname: { type: "string", required: false },
+			tags: { type: "string[]", required: false },
+			prefs: { type: "json", required: false },
 		},
 	},
 };
@@ -184,6 +186,66 @@ describe("single-row writes on DynamoDB Local", () => {
 		expect(racing.interferences()).toBe(1);
 		expect(updated?.loginCount).toBe(5);
 		expect(await findUser(user.id)).toMatchObject({ loginCount: 5 });
+	});
+
+	test("update writes the requested value even when it equals what was read", async () => {
+		const user = await createUser({ name: "A", email: "requested@example.com" });
+		const racing = createInterleavingClient({
+			shouldInterfere: isUpdateCommand,
+			interfere: async () => {
+				await adapter.update({
+					model: "user",
+					where: [{ field: "id", value: user.id }],
+					update: { name: "B" },
+				});
+			},
+		});
+
+		const updated = await environment
+			.createAdapter({ documentClient: racing.documentClient })
+			.update<UserRow>({
+				model: "user",
+				where: [{ field: "email", value: "requested@example.com" }],
+				update: { name: "A" },
+			});
+
+		expect(racing.interferences()).toBe(1);
+		expect(updated?.name).toBe("A");
+		expect(await findUser(user.id)).toMatchObject({ name: "A" });
+	});
+
+	test("update assigns lists and JSON as whole values", async () => {
+		const user = await createUser({
+			email: "whole@example.com",
+			tags: ["x", "y"],
+			prefs: { a: 1, b: 1 },
+		});
+		const where = [{ field: "id", value: user.id }];
+		const racing = createInterleavingClient({
+			shouldInterfere: isUpdateCommand,
+			interfere: async () => {
+				await adapter.update({
+					model: "user",
+					where,
+					update: { tags: ["q", "y"], prefs: { a: 2, b: 1 } },
+				});
+			},
+		});
+
+		const updated = await environment
+			.createAdapter({ documentClient: racing.documentClient })
+			.update<UserRow & { tags: string[]; prefs: Record<string, number> }>({
+				model: "user",
+				where,
+				update: { tags: ["x", "z"], prefs: { a: 1, b: 2 } },
+			});
+
+		expect(racing.interferences()).toBe(1);
+		expect(updated).toMatchObject({ tags: ["x", "z"], prefs: { a: 1, b: 2 } });
+		expect(await findUser(user.id)).toMatchObject({
+			tags: ["x", "z"],
+			prefs: { a: 1, b: 2 },
+		});
 	});
 
 	test("update keeps a string and a number that look alike apart", async () => {
@@ -415,6 +477,39 @@ describe("transactions on DynamoDB Local", () => {
 			"created-updated",
 			"stored-twice",
 		]);
+	});
+
+	test("commits only the attributes it assigned", async () => {
+		const user = await createUser({
+			name: "before",
+			email: "assigned@only.example.com",
+			loginCount: 1,
+		});
+
+		await adapter.transaction(async (tx) => {
+			await tx.update({
+				model: "user",
+				where: [{ field: "id", value: user.id }],
+				update: { name: "after" },
+			});
+			// Another writer changes an attribute the transaction did not assign.
+			await documentClient.send(
+				new UpdateCommand({
+					TableName: environment.tableName("user"),
+					Key: { id: user.id },
+					UpdateExpression: "SET #c = :c",
+					ExpressionAttributeNames: { "#c": "loginCount" },
+					ExpressionAttributeValues: { ":c": 7 },
+				}),
+			);
+		});
+
+		expect(
+			await adapter.findOne<UserRow>({
+				model: "user",
+				where: [{ field: "id", value: user.id }],
+			}),
+		).toMatchObject({ name: "after", loginCount: 7 });
 	});
 
 	test("rejects a duplicate primary key inside and across transactions", async () => {

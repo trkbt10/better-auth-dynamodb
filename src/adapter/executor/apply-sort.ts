@@ -1,6 +1,7 @@
 /**
  * @file Sorting helpers for adapter executor.
  */
+import { compareStrings } from "../../dynamodb/expressions/compare-strings";
 
 const resolveDirectionMultiplier = (direction: "asc" | "desc"): number => {
 	if (direction === "desc") {
@@ -38,6 +39,12 @@ export const sortItems = <T extends Record<string, unknown>>(
 
 		if (isNullish(rightValue)) {
 			return -1 * directionMultiplier;
+		}
+
+		// Strings follow DynamoDB's order, so a page sorted here equals the
+		// one an index returns.
+		if (typeof leftValue === "string" && typeof rightValue === "string") {
+			return compareStrings(leftValue, rightValue) * directionMultiplier;
 		}
 
 		if (leftValue > rightValue) {

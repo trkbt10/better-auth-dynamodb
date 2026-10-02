@@ -6,7 +6,7 @@ import type { ResolvedDynamoDBAdapterConfig } from "../adapter";
 import { buildQueryPlan } from "../adapter/planner/build-query-plan";
 import { createQueryPlanExecutor } from "../adapter/executor/execute-query-plan";
 import { DynamoDBAdapterError } from "../dynamodb/errors/errors";
-import { resolvePatchUpdateExpression } from "../dynamodb/expressions/build-patch-update-expression";
+import { buildUpdateExpression } from "../dynamodb/expressions/build-update-expression";
 import { buildPrimaryKey } from "../dynamodb/mapping/build-primary-key";
 import { resolveTableName } from "../dynamodb/mapping/resolve-table-name";
 import { sendConditionalUpdate } from "../dynamodb/ops/conditional-write";
@@ -30,21 +30,26 @@ type UpdateExecutionResult = {
 	updatedItems: Record<string, unknown>[];
 };
 
-// A null index key attribute cannot be stored; the attribute is removed instead.
-const applyPatchData = (
-	item: DynamoDBItem,
-	update: Record<string, unknown>,
-	indexKeyAttributes: string[],
-): Record<string, unknown> =>
-	Object.entries(update).reduce<Record<string, unknown>>(
-		(acc, [key, value]) => {
-			if (value === null && indexKeyAttributes.includes(key)) {
-				return { ...acc, [key]: undefined };
-			}
-			return { ...acc, [key]: value };
-		},
-		{ ...item },
-	);
+// The attributes an update assigns. A null index key attribute cannot be
+// stored, so it is removed instead (`undefined`). The primary key is left out
+// when it is merely repeated; DynamoDB does not accept it in an update.
+const resolveAssignments = (props: {
+	item: DynamoDBItem;
+	update: Record<string, unknown>;
+	primaryKeyName: string;
+	indexKeyAttributes: string[];
+}): Record<string, DynamoDBItem[string] | undefined> =>
+	Object.entries(props.update).reduce<
+		Record<string, DynamoDBItem[string] | undefined>
+	>((acc, [key, value]) => {
+		if (key === props.primaryKeyName && value === props.item[key]) {
+			return acc;
+		}
+		if (value === null && props.indexKeyAttributes.includes(key)) {
+			return { ...acc, [key]: undefined };
+		}
+		return { ...acc, [key]: value as DynamoDBItem[string] | undefined };
+	}, {});
 
 const stripUndefined = (item: Record<string, unknown>): DynamoDBItem =>
 	Object.entries(item).reduce<DynamoDBItem>((acc, [key, value]) => {
@@ -110,16 +115,11 @@ export const createUpdateExecutor = (
 		tableName: string;
 		primaryKeyName: string;
 		item: DynamoDBItem;
-		nextItem: Record<string, unknown>;
+		assignments: Record<string, DynamoDBItem[string] | undefined>;
+		nextItem: DynamoDBItem;
 		returnUpdatedItems: boolean;
 	}): Promise<DynamoDBItem | undefined> => {
-		const expression = resolvePatchUpdateExpression({
-			prev: props.item,
-			next: props.nextItem,
-		});
-		if (!expression) {
-			return props.item;
-		}
+		const expression = buildUpdateExpression(props.assignments);
 		const result = await sendConditionalUpdate(documentClient, {
 			TableName: props.tableName,
 			Key: buildPrimaryKey({
@@ -138,7 +138,7 @@ export const createUpdateExecutor = (
 		if (!result.applied) {
 			return undefined;
 		}
-		return result.attributes ?? stripUndefined(props.nextItem);
+		return result.attributes ?? props.nextItem;
 	};
 
 	return async ({
@@ -178,21 +178,31 @@ export const createUpdateExecutor = (
 			updatedItems: [],
 		};
 
+		const indexKeyAttributes =
+			adapterConfig.resolveIndexKeyAttributes?.(model) ?? [];
+
 		for (const item of filteredItems) {
-			const nextItem = applyPatchData(
+			const assignments = resolveAssignments({
 				item,
 				update,
-				adapterConfig.resolveIndexKeyAttributes?.(model) ?? [],
-			);
+				primaryKeyName,
+				indexKeyAttributes,
+			});
+			const nextItem = stripUndefined({ ...item, ...assignments });
+			if (Object.keys(assignments).length === 0) {
+				state.updatedItems.push(item);
+				state.updatedCount += 1;
+				continue;
+			}
 			if (transactionState) {
-				const next = stripUndefined(nextItem);
 				bufferTransactionWrite(transactionState, {
 					tableName,
 					keyField: primaryKeyName,
 					row: item,
-					next,
+					next: nextItem,
+					assignedFields: Object.keys(assignments),
 				});
-				state.updatedItems.push(next);
+				state.updatedItems.push(nextItem);
 				state.updatedCount += 1;
 				continue;
 			}
@@ -200,6 +210,7 @@ export const createUpdateExecutor = (
 				tableName,
 				primaryKeyName,
 				item,
+				assignments,
 				nextItem,
 				returnUpdatedItems,
 			});

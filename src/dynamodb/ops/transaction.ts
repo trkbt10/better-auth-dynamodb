@@ -12,7 +12,7 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { DynamoDBAdapterError } from "../errors/errors";
-import { resolvePatchUpdateExpression } from "../expressions/build-patch-update-expression";
+import { buildUpdateExpression } from "../expressions/build-update-expression";
 
 type TransactionRow = Record<string, NativeAttributeValue>;
 
@@ -33,6 +33,16 @@ export type DynamoDBTransactionItem = {
 	 * Attributes of `base` the commit requires to be unchanged.
 	 */
 	pinnedFields: string[];
+	/**
+	 * Attributes the transaction assigned to a stored row. The commit writes
+	 * exactly these, each as a whole value.
+	 */
+	assignedFields: string[];
+	/**
+	 * Whether the transaction deleted a stored row and created it again: the
+	 * commit then replaces the row instead of updating attributes of it.
+	 */
+	replaced: boolean;
 };
 
 export type DynamoDBTransactionState = {
@@ -112,6 +122,8 @@ export const bufferTransactionCreate = (
 			base: undefined,
 			current: props.item,
 			pinnedFields: [],
+			assignedFields: [],
+			replaced: false,
 		});
 		return;
 	}
@@ -122,12 +134,14 @@ export const bufferTransactionCreate = (
 		);
 	}
 	existing.current = props.item;
+	existing.replaced = existing.base !== undefined;
 };
 
 /**
  * Buffer the new image of a row the transaction read: `next` is the updated
  * row, or `null` to delete it. `row` is the image the write was computed from,
  * which is the stored row unless the transaction already holds the item.
+ * `assignedFields` names the attributes an update assigned.
  */
 export const bufferTransactionWrite = (
 	state: DynamoDBTransactionState,
@@ -136,8 +150,10 @@ export const bufferTransactionWrite = (
 		keyField: string;
 		row: TransactionRow;
 		next: TransactionRow | null;
+		assignedFields?: string[] | undefined;
 	},
 ): DynamoDBTransactionItem => {
+	const assignedFields = props.assignedFields ?? [];
 	const keyValue = resolveKeyValue({
 		item: props.row,
 		keyField: props.keyField,
@@ -149,6 +165,9 @@ export const bufferTransactionWrite = (
 	});
 	if (existing) {
 		existing.current = props.next;
+		existing.assignedFields = Array.from(
+			new Set([...existing.assignedFields, ...assignedFields]),
+		);
 		return existing;
 	}
 	const entry: DynamoDBTransactionItem = {
@@ -158,6 +177,8 @@ export const bufferTransactionWrite = (
 		base: props.row,
 		current: props.next,
 		pinnedFields: [],
+		assignedFields,
+		replaced: false,
 	};
 	addTransactionItem(state, entry);
 	return entry;
@@ -303,11 +324,18 @@ const buildTransactItem = (
 	}
 
 	const condition = buildPinnedCondition(entry, entry.base);
-	const patch = resolvePatchUpdateExpression({
-		prev: entry.base,
-		next: entry.current,
-	});
-	if (!patch) {
+	const current = entry.current;
+	if (entry.replaced) {
+		return {
+			Put: {
+				TableName: entry.tableName,
+				Item: current,
+				ConditionExpression: condition.expression,
+				...buildAttributeInput(condition),
+			},
+		};
+	}
+	if (entry.assignedFields.length === 0) {
 		if (entry.pinnedFields.length === 0) {
 			return undefined;
 		}
@@ -320,17 +348,24 @@ const buildTransactItem = (
 			},
 		};
 	}
-	// Without the existence check an update of a row that was deleted in the
-	// meantime would create a partial row holding only the updated attributes.
+	// Each assigned attribute is written as the whole value it has in the
+	// final image, or removed when that image no longer has it. Without the
+	// existence check an update of a row that was deleted in the meantime
+	// would create a partial row holding only the updated attributes.
+	const update = buildUpdateExpression(
+		Object.fromEntries(
+			entry.assignedFields.map((field) => [field, current[field]]),
+		),
+	);
 	return {
 		Update: {
 			TableName: entry.tableName,
 			Key: entry.key,
-			UpdateExpression: patch.updateExpression,
+			UpdateExpression: update.updateExpression,
 			ConditionExpression: condition.expression,
 			...buildAttributeInput({
-				names: { ...patch.expressionAttributeNames, ...condition.names },
-				values: { ...patch.expressionAttributeValues, ...condition.values },
+				names: { ...update.expressionAttributeNames, ...condition.names },
+				values: { ...update.expressionAttributeValues, ...condition.values },
 			}),
 		},
 	};

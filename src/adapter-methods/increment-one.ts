@@ -50,6 +50,7 @@ export const createIncrementOneMethod = (
 		primaryKeyName: string;
 		target: AtomicTarget;
 		next: AtomicTarget["snapshot"];
+		assignedFields: string[];
 		pinnedFields: string[];
 	}): AtomicTarget["snapshot"] => {
 		const entry = bufferTransactionWrite(props.state, {
@@ -57,6 +58,7 @@ export const createIncrementOneMethod = (
 			keyField: props.primaryKeyName,
 			row: props.target.snapshot,
 			next: props.next,
+			assignedFields: props.assignedFields,
 		});
 		pinTransactionFields(entry, props.pinnedFields);
 		return props.next;
@@ -105,6 +107,11 @@ export const createIncrementOneMethod = (
 					snapshot: target.snapshot,
 					assignments,
 				}).nextItem,
+				assignedFields: [
+					...Object.keys(assignments.increment),
+					...Object.keys(assignments.set),
+					...assignments.remove,
+				],
 				pinnedFields: [
 					...dynamoWhere.map((entry) =>
 						getFieldName({ model, field: entry.field }),

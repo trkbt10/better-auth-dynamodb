@@ -300,6 +300,69 @@ describe("createIncrementOneMethod", () => {
 		]);
 	});
 
+	test("checks a stale candidate again before rejecting its counter", async () => {
+		// The index still lists a text value where the row now holds a number.
+		const respond = async (command: unknown) => {
+			if (command instanceof QueryCommand) {
+				return { Items: [{ id: "r1", key: "ip", count: "legacy" }] };
+			}
+			if (command instanceof GetCommand) {
+				return { Item: { id: "r1", key: "ip", count: 1 } };
+			}
+			return { Attributes: { id: "r1", key: "ip", count: 2 } };
+		};
+		const { documentClient, sendCalls } = createDocumentClientStub({ respond });
+		const incrementOne = createIncrementOneMethod(
+			{ documentClient },
+			{
+				adapterConfig: buildAdapterConfig(documentClient, (props) => {
+					if (props.field === "key") {
+						return "rateLimit_key_idx";
+					}
+					return undefined;
+				}),
+				getFieldName,
+				getDefaultModelName,
+			},
+		);
+
+		const updated = await incrementOne({
+			model: "rateLimit",
+			where: [{ field: "key", value: "ip" }],
+			increment: { count: 1 },
+		});
+
+		expect(updated).toEqual({ id: "r1", key: "ip", count: 2 });
+		expect(sendCalls.map((call) => call?.constructor.name)).toEqual([
+			"QueryCommand",
+			"GetCommand",
+			"UpdateCommand",
+		]);
+	});
+
+	test("rejects a counter that a consistent read shows to be non-numeric", async () => {
+		const { incrementOne, sendCalls } = createMethod(async (command) => {
+			if (command instanceof GetCommand) {
+				return { Item: { id: "t1", memberCount: "many" } };
+			}
+			return {};
+		});
+
+		const error = await captureAsyncError(() =>
+			incrementOne({
+				model: "team",
+				where: [{ field: "id", value: "t1" }],
+				increment: { memberCount: 1 },
+			}),
+		);
+
+		expect(error).toBeInstanceOf(DynamoDBAdapterError);
+		if (error instanceof DynamoDBAdapterError) {
+			expect(error.code).toBe("INVALID_UPDATE");
+		}
+		expect(sendCalls.some((call) => call instanceof UpdateCommand)).toBe(false);
+	});
+
 	test("gives up with an error when the condition keeps failing", async () => {
 		const { incrementOne, sendCalls } = createMethod(async (command) => {
 			if (command instanceof GetCommand) {
@@ -387,6 +450,8 @@ describe("createIncrementOneMethod", () => {
 				base: { id: "t1", memberCount: 2, name: "team" },
 				current: { id: "t1", memberCount: 3, name: "renamed" },
 				pinnedFields: ["id", "memberCount"],
+				assignedFields: ["memberCount", "name"],
+				replaced: false,
 			},
 		]);
 	});

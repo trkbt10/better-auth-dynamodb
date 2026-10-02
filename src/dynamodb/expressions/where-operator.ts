@@ -3,6 +3,7 @@
  */
 import type { NativeAttributeValue } from "@aws-sdk/util-dynamodb";
 import { DynamoDBAdapterError } from "../errors/errors";
+import { compareStrings } from "./compare-strings";
 
 export type WhereOperator =
 	| "eq"
@@ -54,13 +55,7 @@ const compareValues = (left: unknown, right: unknown): number | null => {
 		return left - right;
 	}
 	if (isString(left) && isString(right)) {
-		if (left < right) {
-			return -1;
-		}
-		if (left > right) {
-			return 1;
-		}
-		return 0;
+		return compareStrings(left, right);
 	}
 	return null;
 };
