@@ -53,6 +53,28 @@ describe("generateTableSchemas", () => {
 		);
 	});
 
+	it("honors composite indexes declared under a custom modelName", () => {
+		const schemas = generateTableSchemas(
+			{ session: { modelName: "app_session" } },
+			{
+				compositeIndexes: {
+					app_session: [{ partitionKey: "ipAddress", sortKey: "createdAt" }],
+				},
+			},
+		);
+		const indexNames = schemas
+			.find((s) => s.tableName === "app_session")
+			?.indexMappings.map((mapping) => mapping.indexName);
+
+		expect(indexNames).toEqual(
+			expect.arrayContaining([
+				"app_session_userId_createdAt_idx",
+				"app_session_token_createdAt_idx",
+				"app_session_ipAddress_createdAt_idx",
+			]),
+		);
+	});
+
 	it("creates GSI for indexed fields", () => {
 		const schemas = generateTableSchemas({});
 		const userSchema = schemas.find((s) => s.tableName === "user");

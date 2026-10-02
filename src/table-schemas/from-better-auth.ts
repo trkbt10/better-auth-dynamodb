@@ -110,9 +110,12 @@ export const convertToTableSchemas = (
 
 		// Composite indexes and schema extensions are declared per model
 		// (`session`, `verification`, ...). A custom `modelName` renames the
-		// table, not the model, so they are looked up by the model key first.
-		const tableCompositeIndexes =
-			compositeIndexes[tableName] ?? compositeIndexes[modelName] ?? [];
+		// table, not the model, so the defaults still apply to it.
+		const tableCompositeIndexes = resolveModelEntries(
+			compositeIndexes,
+			tableName,
+			modelName,
+		).flat();
 		const compositePartitionKeys = new Set<string>();
 
 		for (const composite of tableCompositeIndexes) {
@@ -148,8 +151,14 @@ export const convertToTableSchemas = (
 
 		// Process single-field indexes (skip if already part of composite with same PK)
 		const indexReferences = schemaOptions?.indexReferences !== false;
-		const tableExtensions =
-			schemaExtensions[tableName] ?? schemaExtensions[modelName] ?? {};
+		const tableExtensions = resolveModelEntries(
+			schemaExtensions,
+			tableName,
+			modelName,
+		).reduce<SchemaExtensions[string]>(
+			(acc, extensions) => ({ ...acc, ...extensions }),
+			{},
+		);
 
 		for (const [fieldName, field] of Object.entries(tableSchema.fields)) {
 			const dbFieldName = field.fieldName ?? fieldName;
@@ -206,6 +215,22 @@ export const convertToTableSchemas = (
 	}
 
 	return schemas;
+};
+
+/**
+ * Collect what is declared for a model under its key (`session`) and under a
+ * custom `modelName` (`app_session`). Both spellings are honored; a model
+ * without a custom name is looked up once.
+ */
+const resolveModelEntries = <T>(
+	entries: Record<string, T>,
+	modelKey: string,
+	modelName: string,
+): T[] => {
+	const names = Array.from(new Set([modelKey, modelName]));
+	return names
+		.map((name) => entries[name])
+		.filter((entry): entry is T => entry !== undefined);
 };
 
 /**
